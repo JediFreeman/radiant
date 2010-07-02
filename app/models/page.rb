@@ -16,15 +16,18 @@ class Page < ActiveRecord::Base
   belongs_to :updated_by, :class_name => 'User'
 
   # Validations
-  validates_presence_of :title, :slug, :breadcrumb, :status_id
+  validates_presence_of :title, :validator_name => :page_title_presence
+  validates_presence_of :slug, :validator_name => :page_slug_presence
+  validates_presence_of :breadcrumb, :validator_name => :page_breadcrumb_presence
+  validates_presence_of :status_id, :validator_name => :page_status_id_presence
 
-  validates_length_of :title, :maximum => 255
-  validates_length_of :slug, :maximum => 100
-  validates_length_of :breadcrumb, :maximum => 160
+  validates_length_of :title, :maximum => 255, :validator_name => :page_title_length
+  validates_length_of :slug, :maximum => 100, :validator_name => :page_slug_length
+  validates_length_of :breadcrumb, :maximum => 160, :validator_name => :page_breadcrumb_length
 
-  validates_format_of :slug, :with => %r{^([-_.A-Za-z0-9]*|/)$}
-  validates_uniqueness_of :slug, :scope => :parent_id
-  validates_numericality_of :id, :status_id, :parent_id, :allow_nil => true, :only_integer => true
+  validates_format_of :slug, :with => %r{^([-_.A-Za-z0-9]*|/)$}, :validator_name => :page_slug_format
+  validates_uniqueness_of :slug, :scope => :parent_id, :validator_name => :page_slug_uniqueness
+  validates_numericality_of :id, :status_id, :parent_id, :allow_nil => true, :only_integer => true, :validator_name => :page_id_numericality
 
   validate :valid_class_name
 

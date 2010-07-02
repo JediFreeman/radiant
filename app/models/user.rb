@@ -10,21 +10,22 @@ class User < ActiveRecord::Base
   belongs_to :updated_by, :class_name => 'User'
 
   # Validations
-  validates_uniqueness_of :login
+  validates_uniqueness_of :login, :validator_name => :user_login_uniqueness
 
-  validates_confirmation_of :password, :if => :confirm_password?
+  validates_confirmation_of :password, :if => :confirm_password?, :validator_name => :user_password_confirmation
 
-  validates_presence_of :name, :login
-  validates_presence_of :password, :password_confirmation, :if => :new_record?
+  validates_presence_of :name, :validator_name => :user_name_presence
+  validates_presence_of :login, :validator_name => :user_login_presence
+  validates_presence_of :password, :password_confirmation, :if => :new_record?, :validator_name => :user_password_presence
 
-  validates_format_of :email, :allow_nil => true, :with => /^$|^([^@\s]+)@((?:[-a-z0-9]+\.)+[a-z]{2,})$/i
+  validates_format_of :email, :allow_nil => true, :with => /^$|^([^@\s]+)@((?:[-a-z0-9]+\.)+[a-z]{2,})$/i, :validator_name => :user_email_format
 
-  validates_length_of :name, :maximum => 100, :allow_nil => true
-  validates_length_of :login, :within => 3..40, :allow_nil => true
-  validates_length_of :password, :within => 5..40, :allow_nil => true, :if => :validate_length_of_password?
-  validates_length_of :email, :maximum => 255, :allow_nil => true
+  validates_length_of :name, :maximum => 100, :allow_nil => true, :validator_name => :user_name_length
+  validates_length_of :login, :within => 3..40, :allow_nil => true, :validator_name => :user_login_length
+  validates_length_of :password, :within => 5..40, :allow_nil => true, :if => :validate_length_of_password?, :validator_name => :user_password_length
+  validates_length_of :email, :maximum => 255, :allow_nil => true, :validator_name => :user_email_length
 
-  validates_numericality_of :id, :only_integer => true, :allow_nil => true
+  validates_numericality_of :id, :only_integer => true, :allow_nil => true, :validator_name => :user_id_numericality
 
   attr_writer :confirm_password
   class << self

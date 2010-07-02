@@ -15,4 +15,13 @@ class ActiveRecord::Base
       end
     }
   end
+  def self.clear_validations
+    @validate_callbacks = []
+  end
+  def self.remove_validation(sym)
+    @validate_callbacks.reject! { |validation| validation.options[:validator_name] == sym }
+  end
+  def self.remove_validation_group(sym)
+    @validate_callbacks.reject! { |validation| validation.options[:validator_group] == sym }
+  end
 end
