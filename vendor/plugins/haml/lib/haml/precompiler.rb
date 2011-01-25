@@ -8,60 +8,46 @@ module Haml
     include Haml::Util
 
     # Designates an XHTML/XML element.
-    # @private
     ELEMENT         = ?%
 
     # Designates a `<div>` element with the given class.
-    # @private
     DIV_CLASS       = ?.
 
     # Designates a `<div>` element with the given id.
-    # @private
     DIV_ID          = ?#
 
     # Designates an XHTML/XML comment.
-    # @private
     COMMENT         = ?/
 
     # Designates an XHTML doctype or script that is never HTML-escaped.
-    # @private
     DOCTYPE         = ?!
 
     # Designates script, the result of which is output.
-    # @private
     SCRIPT          = ?=
 
     # Designates script that is always HTML-escaped.
-    # @private
     SANITIZE        = ?&
 
     # Designates script, the result of which is flattened and output.
-    # @private
     FLAT_SCRIPT     = ?~
 
     # Designates script which is run but not output.
-    # @private
     SILENT_SCRIPT   = ?-
 
     # When following SILENT_SCRIPT, designates a comment that is not output.
-    # @private
     SILENT_COMMENT  = ?#
 
     # Designates a non-parsed line.
-    # @private
     ESCAPE          = ?\\
 
     # Designates a block of filtered text.
-    # @private
     FILTER          = ?:
 
     # Designates a non-parsed line. Not actually a character.
-    # @private
     PLAIN_TEXT      = -1
 
     # Keeps track of the ASCII values of the characters that begin a
     # specially-interpreted line.
-    # @private
     SPECIAL_CHARACTERS   = [
       ELEMENT,
       DIV_CLASS,
@@ -78,7 +64,6 @@ module Haml
 
     # The value of the character that designates that a line is part
     # of a multiline string.
-    # @private
     MULTILINE_CHAR_VALUE = ?|
 
     # Regex to match keywords that appear in the middle of a Ruby block
@@ -94,15 +79,12 @@ module Haml
     #
     # The block is ended after `%p no!`, because `else`
     # is a member of this array.
-    # @private
     MID_BLOCK_KEYWORD_REGEX = /^-\s*(#{%w[else elsif rescue ensure when end].join('|')})\b/
 
     # The Regex that matches a Doctype command.
-    # @private
     DOCTYPE_REGEX = /(\d(?:\.\d)?)?[\s]*([a-z]*)/i
 
     # The Regex that matches a literal string or symbol value
-    # @private
     LITERAL_VALUE_REGEX = /:(\w*)|(["'])((?![\\#]|\2).|\\.)*\2/
 
     private
@@ -136,8 +118,8 @@ END
 
       names.map do |name|
         # Can't use || because someone might explicitly pass in false with a symbol
-        sym_local = "_haml_locals[#{name.to_sym.inspect}]"
-        str_local = "_haml_locals[#{name.to_s.inspect}]"
+        sym_local = "_haml_locals[#{inspect_obj(name.to_sym)}]"
+        str_local = "_haml_locals[#{inspect_obj(name.to_s)}]"
         "#{name} = #{sym_local}.nil? ? #{str_local} : #{sym_local}"
       end.join(';') + ';'
     end
@@ -253,35 +235,35 @@ You don't need to use "- end" in Haml. Un-indent to close a block:
 %p This line is un-indented, so it isn't part of the "if" block
 END
 
+        text = handle_ruby_multiline(text)
         push_silent(text[1..-1], true)
         newline_now
 
         # Handle stuff like - end.join("|")
         @to_close_stack.last << false if text =~ /^-\s*end\b/ && !block_opened?
 
-        case_stmt = text =~ /^-\s*case\b/
         keyword = mid_block_keyword?(text)
         block = block_opened? && !keyword
 
         # It's important to preserve tabulation modification for keywords
         # that involve choosing between posible blocks of code.
         if %w[else elsif when].include?(keyword)
-          # @to_close_stack may not have a :script on top
-          # when the preceding "- if" has nothing nested
-          if @to_close_stack.last && @to_close_stack.last.first == :script
+          # Whether a script block has already been opened immediately above this line
+          was_opened = @to_close_stack.last && @to_close_stack.last.first == :script
+          if was_opened
             @dont_indent_next_line, @dont_tab_up_next_text = @to_close_stack.last[1..2]
-          else
-            push_and_tabulate([:script, @dont_indent_next_line, @dont_tab_up_next_text])
           end
 
           # when is unusual in that either it will be indented twice,
-          # or the case won't have created its own indentation
-          if keyword == "when"
-            push_and_tabulate([:script, @dont_indent_next_line, @dont_tab_up_next_text, false])
+          # or the case won't have created its own indentation.
+          # Also, if no block has been opened yet, we need to make sure we add an end
+          # once we de-indent.
+          if !was_opened || keyword == "when"
+            push_and_tabulate([
+                :script, @dont_indent_next_line, @dont_tab_up_next_text,
+                !was_opened])
           end
-        elsif block || case_stmt
-          push_and_tabulate([:script, @dont_indent_next_line, @dont_tab_up_next_text])
-        elsif block && case_stmt
+        elsif block || text =~ /^-\s*(case|if)\b/
           push_and_tabulate([:script, @dont_indent_next_line, @dont_tab_up_next_text])
         end
       when FILTER; start_filtered(text[1..-1].downcase)
@@ -332,26 +314,37 @@ END
     def flush_merged_text
       return if @to_merge.empty?
 
-      text, tab_change = @to_merge.inject(["", 0]) do |(str, mtabs), (type, val, tabs)|
+      str = ""
+      mtabs = 0
+      newlines = 0
+      @to_merge.each do |type, val, tabs|
         case type
         when :text
-          [str << val.inspect[1...-1], mtabs + tabs]
+          str << inspect_obj(val)[1...-1]
+          mtabs += tabs
         when :script
           if mtabs != 0 && !@options[:ugly]
             val = "_hamlout.adjust_tabs(#{mtabs}); " + val
           end
-          [str << "\#{#{val}}", 0]
+          str << "\#{#{"\n" * newlines}#{val}}"
+          mtabs = 0
+          newlines = 0
+        when :newlines
+          newlines += val
         else
           raise SyntaxError.new("[HAML BUG] Undefined entry in Haml::Precompiler@to_merge.")
         end
       end
 
-      @precompiled <<
-        if @options[:ugly]
-          "_hamlout.buffer << \"#{text}\";"
-        else
-          "_hamlout.push_text(\"#{text}\", #{tab_change}, #{@dont_tab_up_next_text.inspect});"
-        end
+      unless str.empty?
+        @precompiled <<
+          if @options[:ugly]
+            "_hamlout.buffer << \"#{str}\";"
+          else
+            "_hamlout.push_text(\"#{str}\", #{mtabs}, #{@dont_tab_up_next_text.inspect});"
+          end
+      end
+      @precompiled << "\n" * newlines
       @to_merge = []
       @dont_tab_up_next_text = false
     end
@@ -387,6 +380,7 @@ END
     # the result before it is added to `@buffer`
     def push_script(text, opts = {})
       raise SyntaxError.new("There's no Ruby code for = to evaluate.") if text.empty?
+      text = handle_ruby_multiline(text)
       return if options[:suppress_eval]
       opts[:escape_html] = options[:escape_html] if opts[:escape_html].nil?
 
@@ -396,14 +390,14 @@ END
 
       no_format = @options[:ugly] &&
         !(opts[:preserve_script] || opts[:preserve_tag] || opts[:escape_html])
-      output_temp = "(haml_very_temp = haml_temp; haml_temp = nil; haml_very_temp)"
-      out = "_hamlout.#{static_method_name(:format_script, *args)}(#{output_temp});"
+      output_expr = "(#{text}\n)"
+      static_method = "_hamlout.#{static_method_name(:format_script, *args)}"
 
       # Prerender tabulation unless we're in a tag
       push_merged_text '' unless opts[:in_tag]
 
       unless block_opened?
-        @to_merge << [:script, no_format ? "#{text}\n" : "haml_temp = #{text}\n#{out}"]
+        @to_merge << [:script, no_format ? "#{text}\n" : "#{static_method}(#{output_expr});"]
         concat_merged_text("\n") unless opts[:in_tag] || opts[:nuke_inner_whitespace]
         @newlines -= 1
         return
@@ -413,7 +407,7 @@ END
 
       push_silent "haml_temp = #{text}"
       newline_now
-      push_and_tabulate([:loud, "_hamlout.buffer << #{no_format ? "#{output_temp}.to_s;" : out}",
+      push_and_tabulate([:loud, "_hamlout.buffer << #{no_format ? "haml_temp.to_s;" : "#{static_method}(haml_temp);"}",
         !(opts[:in_tag] || opts[:nuke_inner_whitespace] || @options[:ugly])])
     end
 
@@ -491,12 +485,14 @@ END
       @template_tabs -= 1
     end
 
+    # This is a class method so it can be accessed from {Haml::Helpers}.
+    #
     # Iterates through the classes and ids supplied through `.`
     # and `#` syntax, and returns a hash with them as attributes,
     # that can then be merged with another attributes hash.
-    def parse_class_and_id(list)
+    def self.parse_class_and_id(list)
       attributes = {}
-      list.scan(/([#.])([-_a-zA-Z0-9]+)/) do |type, property|
+      list.scan(/([#.])([-:_a-zA-Z0-9]+)/) do |type, property|
         case type
         when '.'
           if attributes['class']
@@ -531,8 +527,17 @@ END
       quote_escape = attr_wrapper == '"' ? "&quot;" : "&apos;"
       other_quote_char = attr_wrapper == '"' ? "'" : '"'
 
+      if attributes['data'].is_a?(Hash)
+        attributes = attributes.dup
+        attributes =
+          Haml::Util.map_keys(attributes.delete('data')) {|name| "data-#{name}"}.merge(attributes)
+      end
+
       result = attributes.collect do |attr, value|
         next if value.nil?
+
+        value = filter_and_join(value, ' ') if attr == 'class'
+        value = filter_and_join(value, '_') if attr == 'id'
 
         if value == true
           next " #{attr}" if is_html
@@ -557,6 +562,13 @@ END
       result.compact.sort.join
     end
 
+    def self.filter_and_join(value, separator)
+      return "" if value == ""
+      value = [value] unless value.is_a?(Array)
+      value = value.flatten.collect {|item| item ? item.to_s : nil}.compact.join(separator)
+      return !value.empty? && value
+    end
+
     def prerender_tag(name, self_close, attributes)
       attributes_string = Precompiler.build_attributes(html?, @options[:attr_wrapper], attributes)
       "<#{name}#{attributes_string}#{self_close && xhtml? ? ' /' : ''}>"
@@ -564,20 +576,20 @@ END
 
     # Parses a line into tag_name, attributes, attributes_hash, object_ref, action, value
     def parse_tag(line)
-      raise SyntaxError.new("Invalid tag: \"#{line}\".") unless match = line.scan(/%([-:\w]+)([-\w\.\#]*)(.*)/)[0]
+      raise SyntaxError.new("Invalid tag: \"#{line}\".") unless match = line.scan(/%([-:\w]+)([-:\w\.\#]*)(.*)/)[0]
       tag_name, attributes, rest = match
       new_attributes_hash = old_attributes_hash = last_line = object_ref = nil
-      attributes_hashes = []
+      attributes_hashes = {}
       while rest
         case rest[0]
         when ?{
           break if old_attributes_hash
           old_attributes_hash, rest, last_line = parse_old_attributes(rest)
-          attributes_hashes << [:old, old_attributes_hash]
+          attributes_hashes[:old] = old_attributes_hash
         when ?(
           break if new_attributes_hash
           new_attributes_hash, rest, last_line = parse_new_attributes(rest)
-          attributes_hashes << [:new, new_attributes_hash]
+          attributes_hashes[:new] = new_attributes_hash
         when ?[
           break if object_ref
           object_ref, rest = balance(rest, ?[, ?])
@@ -650,7 +662,7 @@ END
         if type == :static
           static_attributes[name] = val
         else
-          dynamic_attributes << name.inspect << " => " << val << ","
+          dynamic_attributes << inspect_obj(name) << " => " << val << ","
         end
       end
       dynamic_attributes << "}"
@@ -685,7 +697,7 @@ END
 
       return name, [:static, content.first[1]] if content.size == 1
       return name, [:dynamic,
-        '"' + content.map {|(t, v)| t == :str ? v.inspect[1...-1] : "\#{#{v}}"}.join + '"']
+        '"' + content.map {|(t, v)| t == :str ? inspect_obj(v)[1...-1] : "\#{#{v}}"}.join + '"']
     end
 
     # Parses a line that will render as an XHTML tag, and adds the code that will
@@ -744,24 +756,32 @@ END
 
       object_ref = "nil" if object_ref.nil? || @options[:suppress_eval]
 
-      attributes = parse_class_and_id(attributes)
-      attributes_hashes.map! do |syntax, attributes_hash|
-        if syntax == :old
-          static_attributes = parse_static_hash(attributes_hash)
-          attributes_hash = nil if static_attributes || @options[:suppress_eval]
-        else
-          static_attributes, attributes_hash = attributes_hash
-        end
+      attributes = Precompiler.parse_class_and_id(attributes)
+      attributes_list = []
+
+      if attributes_hashes[:new]
+        static_attributes, attributes_hash = attributes_hashes[:new]
         Buffer.merge_attrs(attributes, static_attributes) if static_attributes
-        attributes_hash
-      end.compact!
+        attributes_list << attributes_hash
+      end
+
+      if attributes_hashes[:old]
+        static_attributes = parse_static_hash(attributes_hashes[:old])
+        Buffer.merge_attrs(attributes, static_attributes) if static_attributes
+        attributes_list << attributes_hashes[:old] unless static_attributes || @options[:suppress_eval]
+      end
+
+      attributes_list.compact!
 
       raise SyntaxError.new("Illegal nesting: nesting within a self-closing tag is illegal.", @next_line.index) if block_opened? && self_closing
-      raise SyntaxError.new("Illegal nesting: content can't be both given on the same line as %#{tag_name} and nested within it.", @next_line.index) if block_opened? && !value.empty?
       raise SyntaxError.new("There's no Ruby code for #{action} to evaluate.", last_line - 1) if parse && value.empty?
       raise SyntaxError.new("Self-closing tags can't have content.", last_line - 1) if self_closing && !value.empty?
 
-      self_closing ||= !!( !block_opened? && value.empty? && @options[:autoclose].include?(tag_name) )
+      if block_opened? && !value.empty? && !is_ruby_multiline?(value)
+        raise SyntaxError.new("Illegal nesting: content can't be both given on the same line as %#{tag_name} and nested within it.", @next_line.index)
+      end
+
+      self_closing ||= !!(!block_opened? && value.empty? && @options[:autoclose].any? {|t| t === tag_name})
       value = nil if value.empty? && (block_opened? || self_closing)
 
       dont_indent_next_line =
@@ -769,7 +789,7 @@ END
         (nuke_inner_whitespace && block_opened?)
 
       # Check if we can render the tag directly to text and not process it in the buffer
-      if object_ref == "nil" && attributes_hashes.empty? && !preserve_script
+      if object_ref == "nil" && attributes_list.empty? && !preserve_script
         tag_closed = !block_opened? && !self_closing && !parse
 
         open_tag  = prerender_tag(tag_name, self_closing, attributes)
@@ -787,19 +807,19 @@ END
         return if tag_closed
       else
         flush_merged_text
-        content = parse ? 'nil' : value.inspect
-        if attributes_hashes.empty?
-          attributes_hashes = ''
-        elsif attributes_hashes.size == 1
-          attributes_hashes = ", #{attributes_hashes.first}"
+        content = parse ? 'nil' : inspect_obj(value)
+        if attributes_list.empty?
+          attributes_list = ''
+        elsif attributes_list.size == 1
+          attributes_list = ", #{attributes_list.first}"
         else
-          attributes_hashes = ", (#{attributes_hashes.join(").merge(")})"
+          attributes_list = ", (#{attributes_list.join(").merge(")})"
         end
 
         args = [tag_name, self_closing, !block_opened?, preserve_tag, escape_html,
                 attributes, nuke_outer_whitespace, nuke_inner_whitespace
-               ].map { |v| v.inspect }.join(', ')
-        push_silent "_hamlout.open_tag(#{args}, #{object_ref}, #{content}#{attributes_hashes})"
+               ].map {|v| inspect_obj(v)}.join(', ')
+        push_silent "_hamlout.open_tag(#{args}, #{object_ref}, #{content}#{attributes_list})"
         @dont_tab_up_next_text = @dont_indent_next_line = dont_indent_next_line
       end
 
@@ -881,6 +901,7 @@ END
             when "strict";   '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">'
             when "frameset"; '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Frameset//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-frameset.dtd">'
             when "mobile";   '<!DOCTYPE html PUBLIC "-//WAPFORUM//DTD XHTML Mobile 1.2//EN" "http://www.openmobilealliance.org/tech/DTD/xhtml-mobile12.dtd">'
+            when "rdfa";     '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML+RDFa 1.0//EN" "http://www.w3.org/MarkUp/DTD/xhtml-rdfa-1.dtd">'
             when "basic";    '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML Basic 1.1//EN" "http://www.w3.org/TR/xhtml-basic/xhtml-basic11.dtd">'
             else             '<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">'
             end
@@ -959,23 +980,42 @@ END
     end
 
     def handle_multiline(line)
-      if is_multiline?(line.text)
-        line.text.slice!(-1)
-        while new_line = raw_next_line.first
-          break if new_line == :eod
-          newline and next if new_line.strip.empty?
-          break unless is_multiline?(new_line.strip)
-          line.text << new_line.strip[0...-1]
-          newline
-        end
-        un_next_line new_line
-        resolve_newlines
+      return unless is_multiline?(line.text)
+      line.text.slice!(-1)
+      while new_line = raw_next_line.first
+        break if new_line == :eod
+        newline and next if new_line.strip.empty?
+        break unless is_multiline?(new_line.strip)
+        line.text << new_line.strip[0...-1]
+        newline
       end
+      un_next_line new_line
+      resolve_newlines
     end
 
     # Checks whether or not +line+ is in a multiline sequence.
     def is_multiline?(text)
       text && text.length > 1 && text[-1] == MULTILINE_CHAR_VALUE && text[-2] == ?\s
+    end
+
+    def handle_ruby_multiline(text)
+      text = text.rstrip
+      return text unless is_ruby_multiline?(text)
+      un_next_line @next_line.full
+      begin
+        new_line = raw_next_line.first
+        break if new_line == :eod
+        newline and next if new_line.strip.empty?
+        text << " " << new_line.strip
+        newline
+      end while is_ruby_multiline?(new_line.strip)
+      next_line
+      resolve_newlines
+      text
+    end
+
+    def is_ruby_multiline?(text)
+      text && text.length > 1 && text[-1] == ?, && text[-2] != ?? && text[-3..-2] != "?\\"
     end
 
     def contains_interpolation?(str)
@@ -984,14 +1024,14 @@ END
 
     def unescape_interpolation(str, opts = {})
       res = ''
-      rest = Haml::Shared.handle_interpolation str.dump do |scan|
+      rest = Haml::Shared.handle_interpolation inspect_obj(str) do |scan|
         escapes = (scan[2].size - 1) / 2
         res << scan.matched[0...-3 - escapes]
         if escapes % 2 == 1
           res << '#{'
         else
           content = eval('"' + balance(scan, ?{, ?}, 1)[0][0...-1] + '"')
-          content = "Haml::Helpers.html_escape(#{content})" if opts[:escape_html]
+          content = "Haml::Helpers.html_escape((#{content}))" if opts[:escape_html]
           res << '#{' + content + "}"# Use eval to get rid of string escapes
         end
       end
@@ -1030,8 +1070,7 @@ END
 
     def resolve_newlines
       return unless @newlines > 0
-      flush_merged_text unless @to_merge.all? {|type, *_| type == :text}
-      @precompiled << "\n" * @newlines
+      @to_merge << [:newlines, @newlines]
       @newlines = 0
     end
 
@@ -1054,6 +1093,8 @@ END
         end
       when :script
         last[1].gsub!(/\(haml_temp, (.*?)\);$/, '(haml_temp.rstrip, \1);')
+        rstrip_buffer! index - 1
+      when :newlines
         rstrip_buffer! index - 1
       else
         raise SyntaxError.new("[HAML BUG] Undefined entry in Haml::Precompiler@to_merge.")

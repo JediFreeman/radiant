@@ -1,6 +1,6 @@
 require File.dirname(__FILE__) + "/extension_generators_spec_helper"
 
-share_as :AllInstanceGenerators do
+shared_examples_for "all instance generators" do
   # Check for directories
   %w(config config/environments config/initializers db log script vendor/plugins vendor/extensions
     public public/images public/stylesheets public/images/admin public/stylesheets/admin public/stylesheets/sass
@@ -41,7 +41,7 @@ share_as :AllInstanceGenerators do
   end
   
   # Check for admin sass/css
-  %w(main.css modules/_links.sass modules/_opacity.sass modules/_rounded.sass modules/_shadow.sass 
+  %w(main.css modules/_links.sass modules/_rounded.sass 
     partials/_avatars.sass partials/_footer.sass partials/_layout.sass partials/_reset.sass main.sass 
     partials/_base.sass partials/_forms.sass partials/_messages.sass partials/_content.sass 
     partials/_header.sass partials/_popup.sass partials/_tabcontrol.sass partials/_dateinput.sass 
@@ -73,19 +73,26 @@ share_as :AllInstanceGenerators do
   end
   
   # Check for admin javascripts
-  %w(application.js controls.js dragdrop.js lowpro.js popup.js ruledtable.js sitemap.js tabcontrol.js
-    codearea.js cookie.js effects.js prototype.js shortcuts.js status.js utility.js).each do |file|
+  %w(application.js controls.js dragdrop.js lowpro.js popup.js pagefield.js ruledtable.js sitemap.js
+    tabcontrol.js codearea.js cookie.js effects.js prototype.js shortcuts.js status.js utility.js).each do |file|
     it "should have a #{file} admin image" do
       'public/javascripts/admin'.should have_generated_file(file)
     end
   end
 
   # Check for initializers
-  %w(haml.rb).each do |file|
+  # initializers are now run from RADIANT_ROOT before the instance, 
+  # so most of those are should no longer be copied across
+  %w(radiant_config.rb).each do |file|
     it "should have a #{file} initializer" do
       'config/initializers'.should have_generated_file(file)
     end
   end
+  %w(haml.rb compass.rb).each do |file|
+    it "should not have a #{file} initializer" do
+      'config/initializers'.should_not have_generated_file(file)
+    end
+  end 
 end
 
 describe "IntanceGenerator" do
@@ -94,21 +101,21 @@ describe "IntanceGenerator" do
   Rails::Generator::Base.prepend_sources(Rails::Generator::PathSource.new(:radiant, File.join(BASE_ROOT, 'lib', 'generators')))
   
   describe('with no options') do
-    it_should_behave_like AllInstanceGenerators
+    it_should_behave_like "all instance generators"
 
     before(:all) do
       with_radiant_root_as_base_root { suppress_stdout { run_generator('instance', [RAILS_ROOT]) } }
     end
 
     after(:all) do
-      rm_rf Dir["#{RADIANT_ROOT}"]
+      FileUtils.rm_rf Dir["#{RADIANT_ROOT}"]
     end
   end
 
   { 'db2'=>'ibm_db', 'mysql'=>'mysql', 'postgresql'=>'postgresql', 
     'sqlite3'=>'sqlite3', 'sqlserver'=>'sqlserver' }.each do |db, adapter|
     describe("with #{db} database option") do
-      it_should_behave_like AllInstanceGenerators
+      it_should_behave_like "all instance generators"
 
       before(:all) do
         with_radiant_root_as_base_root { suppress_stdout { run_generator('instance', ['-d', db, RAILS_ROOT]) } }
@@ -121,13 +128,13 @@ describe "IntanceGenerator" do
       end
     
       after(:all) do
-        rm_rf Dir["#{RADIANT_ROOT}"]
+        FileUtils.rm_rf Dir["#{RADIANT_ROOT}"]
       end
     end
   end
   
   describe('with shebang option') do
-    it_should_behave_like AllInstanceGenerators
+    it_should_behave_like "all instance generators"
 
     before(:all) do
       @shebang = '/my/path/to/ruby'
@@ -146,7 +153,7 @@ describe "IntanceGenerator" do
     end
     
     after(:all) do
-      rm_rf Dir["#{RADIANT_ROOT}"]
+      FileUtils.rm_rf Dir["#{RADIANT_ROOT}"]
     end
   end
 end

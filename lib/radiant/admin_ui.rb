@@ -120,7 +120,7 @@ module Radiant
     end
 
     # Region sets
-    %w{page snippet layout user extension}.each do |controller|
+    %w{page snippet layout user configuration extension}.each do |controller|
       attr_accessor controller
       alias_method "#{controller}s", controller
     end
@@ -141,6 +141,7 @@ module Radiant
       nav << design
 
       settings = nav_tab("Settings")
+      settings << nav_item("General", "/admin/configuration")
       settings << nav_item("Personal", "/admin/preferences")
       settings << nav_item("Users", "/admin/users")
       settings << nav_item("Extensions", "/admin/extensions")
@@ -152,6 +153,7 @@ module Radiant
       @snippet = load_default_snippet_regions
       @layout = load_default_layout_regions
       @user = load_default_user_regions
+      @configuration = load_default_configuration_regions
       @extension = load_default_extension_regions
     end
 
@@ -161,12 +163,13 @@ module Radiant
       returning OpenStruct.new do |page|
         page.edit = RegionSet.new do |edit|
           edit.main.concat %w{edit_header edit_form edit_popups}
-          edit.form.concat %w{edit_title edit_extended_metadata edit_page_parts edit_layout_and_type}
+          edit.form.concat %w{edit_title edit_extended_metadata edit_page_parts}
+          edit.layout.concat %w{edit_layout edit_type edit_status edit_published_at}
           edit.form_bottom.concat %w{edit_buttons edit_timestamp}
         end
         page.index = RegionSet.new do |index|
-          index.sitemap_head.concat %w{title_column_header status_column_header modify_column_header}
-          index.node.concat %w{title_column status_column add_child_column remove_column}
+          index.sitemap_head.concat %w{title_column_header status_column_header actions_column_header}
+          index.node.concat %w{title_column status_column actions_column}
         end
         page.remove = page.children = page.index
         page.new = page._part = page.edit
@@ -187,8 +190,8 @@ module Radiant
           edit.form_bottom.concat %w{edit_buttons edit_timestamp}
         end
         user.index = RegionSet.new do |index|
-          index.thead.concat %w{title_header roles_header modify_header}
-          index.tbody.concat %w{title_cell roles_cell modify_cell}
+          index.thead.concat %w{title_header roles_header actions_header}
+          index.tbody.concat %w{title_cell roles_cell actions_cell}
           index.bottom.concat %w{new_button}
         end
         user.new = user.edit
@@ -204,8 +207,8 @@ module Radiant
         end
         snippet.index = RegionSet.new do |index|
           index.top.concat %w{}
-          index.thead.concat %w{title_header modify_header}
-          index.tbody.concat %w{title_cell modify_cell}
+          index.thead.concat %w{title_header actions_header}
+          index.tbody.concat %w{title_cell actions_cell}
           index.bottom.concat %w{new_button}
         end
         snippet.new = snippet.edit
@@ -221,11 +224,25 @@ module Radiant
         end
         layout.index = RegionSet.new do |index|
           index.top.concat %w{}
-          index.thead.concat %w{title_header modify_header}
-          index.tbody.concat %w{title_cell modify_cell}
+          index.thead.concat %w{title_header actions_header}
+          index.tbody.concat %w{title_cell actions_cell}
           index.bottom.concat %w{new_button}
         end
         layout.new = layout.edit
+      end
+    end
+
+    def load_default_configuration_regions
+      returning OpenStruct.new do |configuration|
+        configuration.show = RegionSet.new do |show|
+          show.user.concat %w{preferences}
+          show.config.concat %w{site defaults users}
+        end
+        configuration.edit = RegionSet.new do |edit|
+          edit.main.concat %w{edit_header edit_form}
+          edit.form.concat %w{edit_site edit_defaults edit_users}
+          edit.form_bottom.concat %w{edit_buttons}
+        end
       end
     end
 

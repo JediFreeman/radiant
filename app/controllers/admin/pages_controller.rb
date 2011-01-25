@@ -6,6 +6,7 @@ class Admin::PagesController < Admin::ResourceController
     r.plural.js do
       @level = params[:level].to_i
       @template_name = 'index'
+      self.models = Page.find(params[:page_id]).children.all
       response.headers['Content-Type'] = 'text/html;charset=utf-8'
       render :action => 'children.html.haml', :layout => false
     end
@@ -17,16 +18,23 @@ class Admin::PagesController < Admin::ResourceController
   end
 
   def new
-    self.model = model_class.new_with_defaults(config)
-    if params[:page_id].blank?
-      self.model.slug = '/'
-    end
-    response_for :singular
+    @page = self.model = model_class.new_with_defaults(config)
+    assign_page_attributes
+    response_for :new
   end
 
   private
+    def assign_page_attributes
+      if params[:page_id].blank?
+        self.model.slug = '/'
+      end
+      self.model.parent_id = params[:page_id]
+    end
+
     def model_class
-      if params[:page_id]
+      if Page.descendants.any? { |d| d.to_s == params[:page_class] }
+        params[:page_class].constantize
+      elsif params[:page_id]
         Page.find(params[:page_id]).children
       else
         Page
@@ -42,7 +50,5 @@ class Admin::PagesController < Admin::ResourceController
       @meta ||= []
       @meta << {:field => "slug", :type => "text_field", :args => [{:class => 'textbox', :maxlength => 100}]}
       @meta << {:field => "breadcrumb", :type => "text_field", :args => [{:class => 'textbox', :maxlength => 160}]}
-      @meta << {:field => "description", :type => "text_field", :args => [{:class => 'textbox', :maxlength => 200}]}
-      @meta << {:field => "keywords", :type => "text_field", :args => [{:class => 'textbox', :maxlength => 200}]}
     end
 end
