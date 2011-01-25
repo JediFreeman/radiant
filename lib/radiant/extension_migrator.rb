@@ -8,7 +8,7 @@ module Radiant
       end
       
       def migrate_extensions
-        Extension.descendants.each do |ext|
+        Extension.descendants.reverse.each do |ext|
           ext.migrator.migrate
         end
       end
