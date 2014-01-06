@@ -21,8 +21,6 @@ module Radiant
       load_default_configuration
       load_database_template(config[:database_template])
       announce "Finished."
-      announce "Don't forget to run your update task to copy any public assets for your template.\n\n"
-      announce "For example, run 'rake radiant:extensions:site_templates:update'."
     end
     
     def create_admin_user(name, username, password)
@@ -50,7 +48,7 @@ module Radiant
         step { Radiant::Config['admin.title'   ] = 'Radiant CMS' }
         step { Radiant::Config['admin.subtitle'] = 'Publishing for Small Teams' }
         step { Radiant::Config['defaults.page.parts' ] = 'body, extended' }
-        step { Radiant::Config['defaults.page.status' ] = 'draft' }
+        step { Radiant::Config['defaults.page.status' ] = 'Draft' }
         step { Radiant::Config['defaults.page.filter' ] = nil }
         step { Radiant::Config['defaults.page.fields'] = 'Keywords, Description' }
         step { Radiant::Config['session_timeout'] = 2.weeks }
@@ -72,6 +70,9 @@ module Radiant
       unless filename
         templates = find_and_load_templates("#{RADIANT_ROOT}/db/templates/*.yml")
         templates.concat find_and_load_templates("#{RADIANT_ROOT}/vendor/extensions/**/db/templates/*.yml")
+        Radiant::Extension.descendants.each do |d|
+          templates.concat find_and_load_templates(d.root + '/db/templates/*.yml')
+        end
         templates.concat find_and_load_templates("#{Rails.root}/vendor/extensions/**/db/templates/*.yml")
         templates.concat find_and_load_templates("#{Rails.root}/db/templates/*.yml")
         templates.uniq!
@@ -130,7 +131,10 @@ module Radiant
             "#{Dir.pwd}/db/templates/#{filename}"
           ] +
           Dir.glob("#{RADIANT_ROOT}/vendor/extensions/**/db/templates/#{filename}") + 
-          Dir.glob("#{Rails.root}/vendor/extensions/**/db/templates/#{filename}")
+          Dir.glob("#{Rails.root}/vendor/extensions/**/db/templates/#{filename}") +
+          Radiant::Extension.descendants.inject([]) do |r, d|
+            r << "#{d.root}/db/templates/#{filename}"
+          end
         ).find { |name| File.file?(name) }
       end
       

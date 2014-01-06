@@ -1,18 +1,22 @@
 require File.dirname(__FILE__) + "/../../spec_helper"
 
-describe Admin::NodeHelper do
+describe Radiant::Admin::NodeHelper do
+  #dataset :users_and_pages
 
   before :each do
-    @controller = mock("controller")
     @cookies = {}
+    @errors = mock("errors")
     helper.stub!(:cookies).and_return(@cookies)
     helper.stub!(:homepage).and_return(nil)
-    @page = mock_model(Page)
+    @page = mock_model(Page, :class_name => 'Page')
     @page.stub!(:sheet?).and_return(false) # core extension alters the behavior
+    helper.stub!(:image).and_return('')
+    helper.stub!(:admin?).and_return(true)
+    helper.instance_variable_set(:@page, @page)
   end
 
   it "should render a sitemap node" do
-    helper.should_receive(:render).with(:partial => "node", :locals => {:level => 0, :simple => false, :page => @page}).and_return(@current_node)
+    helper.should_receive(:render).with(:partial => "admin/pages/node", :locals => {:level => 0, :simple => false, :page => @page}).and_return(@current_node)
     helper.render_node(@page)
     helper.assigns[:current_node] == @page
   end
@@ -59,7 +63,7 @@ describe Admin::NodeHelper do
     helper.should_receive(:image).with("page", :class => "icon", :alt => '', :title => '')
     helper.icon
   end
-  
+
   it "should display the virtual icon if the current node is virtual" do
     assigns[:current_node] = @page
     @page.should_receive(:virtual?).and_return(true)
@@ -102,5 +106,6 @@ describe Admin::NodeHelper do
             :style => 'display: none;')
     helper.spinner
   end
+
 
 end

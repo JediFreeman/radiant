@@ -7,10 +7,11 @@ en:
         blank: 'this must not be blank' # required
         invalid: 'this does not match the expected format' #invalid_format
         not_a_number: 'this must be a number' # must be number
+        not_a_page: "there must be a page at this address"
+        not_permitted: 'this must be one of the permitted values'
         taken: 'this name is already in use' # name_in_use
         too_long: 'this must not be longer than %{count} characters' # character_limit
         too_short: 'this must be at least %{count} characters long' # character_minimum
-        not_permitted: 'this must be one of the permitted values'
       models:
         page:
           attributes:
@@ -50,18 +51,12 @@ en:
         filter: "page filter"
         parts: "page parts"
         status: "page status"
-      snippet:
-        filter: "snippet filter"
     dev:
-      host: "dev site domain name"
-    errors:
-      blank: 'this must not be blank'
-      not_permitted: 'this must be one of the available values'
-      not_a_number: 'this must be a number'
+      host: "dev site domain"
     local:
       timezone: "local timezone"
     site:
-      name: "site name"
+      title: "site title"
       host: "site domain"
     user:
       allow_password_reset?: "allow password reset"
@@ -78,10 +73,12 @@ en:
       only_day: "%e"
       short: "%e %b"
     month_names: [~, January, February, March, April, May, June, July, August, September, October, November, December]   
-    order: [ :year, :month, :day ]
+    order:
+      - :year
+      - :month
+      - :day
   delete_layout: 'Delete Layout'
   delete_pages: 'Delete %{pages}'
-  delete_snippet: 'Delete Snippet'
   delete_user: 'Delete User'
   description: 'Description'
   design: 'Design'
@@ -93,7 +90,6 @@ en:
   edit_page:  'Edit Page'   
   edit_preferences: 'Edit Preferences'
   edit_settings: 'Edit Settings'
-  edit_snippet: 'Edit Snippet'
   edit_user: 'Edit User'
   email_address: 'E-mail Address'
   extension: 'Extension'
@@ -116,17 +112,16 @@ en:
   new_layout: 'New Layout'    
   new_page: 'New Page'
   new_password: 'New Password'
-  new_snippet: 'New Snippet'
   new_user: 'New User'  
-  no: 'No'
+  'no': 'No'
   no_layouts: 'No Layouts'
   no_pages: 'No Pages'
-  no_snippets: 'No Snippets'
   normal_page: 'Normal Page'
   notes: 'Notes'    
   optional: 'Optional'
   or: 'or'
   page: 'Page'
+  page_hierarchy: 'Page hierarchy of the current site'
   page_page: 'Page Part'
   page_title: 'Page Title'  
   page_type: 'Page Type'
@@ -145,6 +140,7 @@ en:
   preferences_controller:
     error_updating: 'There was an error updating your preferences.'      
     updated: 'Your preferences have been updated.' 
+  preview: 'Preview'
   published: 'Published'
   published_at: 'Published at' 
   published_on: 'Published On'
@@ -156,7 +152,6 @@ en:
   remove_layout: 'Remove Layout'
   remove_page: 'Remove Page'
   remove_pages: 'Remove %{pages}'
-  remove_snippet: 'Remove Snippet'
   remove_tab: 'Remove Tab'
   remove_user: 'Remove user'
   required: 'Required'  
@@ -180,8 +175,6 @@ en:
   settings: 'Settings'
   show_all: 'Show all'
   slug: 'Slug'
-  snippet: 'Snippet'   
-  snippets: 'Snippets'
   status: 'Status'
     # Warnings and info text:
   testing: Testing
@@ -190,8 +183,6 @@ en:
       remove_warning: 'Are you sure you want to <strong class="warning">permanently remove</strong> the following layout?'   
     pages: 
       remove_warning: 'Are you sure you want to <strong class="warning">permanently remove</strong> the following %{pages}?'
-    snippets:
-      remove_warning: 'Are you sure you want to <strong class="warning">permanently remove</strong> the following snippet?'
     users: 
       remove_warning: 'Are you sure you want to <strong class="warning">permanently remove</strong> the following user?'
   this_file_language: "English" 
@@ -214,12 +205,15 @@ en:
     last_updated: 'Last Updated'
   type: 'Type'
   units:
-    KB: "MB"
+    KB: "KB"
     MB: "MB"
-    GB: "MB"
+    GB: "GB"
     seconds: "seconds"
     minutes: "minutes"
     hours: "hours"
+    days: "days"
+    weeks: "weeks"
+    months: "months"
   user: 'User'
   username: 'Username'
   username_or_email: 'Username or E-mail Address'
@@ -228,8 +222,9 @@ en:
     cannot_delete_self: 'You cannot delete yourself.'    
   version: 'Version'
   view_site: 'View Site'
+  warning: 'Warning'
   website: 'Website'
   welcome_controller:
     invalid_user: 'Invalid username, e-mail address, or password.' 
     logged_out: 'You are now logged out.'  
-  yes: 'Yes'
+  'yes': 'Yes'

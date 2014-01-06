@@ -1,6 +1,15 @@
 require 'active_record'
 
 class ActiveRecord::Base
+  
+  def self.validates_path(*args)
+    configuration = args.extract_options!
+    validates_each(args, configuration) do |record, attr_name, value|
+      page = Page.find_by_path(value)
+      record.errors.add(attr_name, :page_not_found, :default => configuration[:message]) if page.nil? || page.is_a?(FileNotFoundPage)
+    end
+  end
+  
   def self.object_id_attr(symbol, klass)
     module_eval %{
       def #{symbol}
@@ -15,13 +24,5 @@ class ActiveRecord::Base
       end
     }
   end
-  def self.clear_validations
-    @validate_callbacks = []
-  end
-  def self.remove_validation(sym)
-    @validate_callbacks.reject! { |validation| validation.options[:validator_name] == sym }
-  end
-  def self.remove_validation_group(sym)
-    @validate_callbacks.reject! { |validation| validation.options[:validator_group] == sym }
-  end
+  
 end

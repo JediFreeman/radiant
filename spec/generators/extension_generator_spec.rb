@@ -12,7 +12,7 @@ describe "ExtensionGenerator with normal options" do
   end
   
   it "should generate README file" do
-    'vendor/extensions/sample'.should have_generated_file('README')
+    'vendor/extensions/sample'.should have_generated_file('README.md')
   end
   
   it "should generate a Rakefile" do
@@ -29,12 +29,20 @@ describe "ExtensionGenerator with normal options" do
   
   it "should generate extension init file" do
     'vendor/extensions/sample'.should have_generated_class('sample_extension', 'Radiant::Extension') do |body|
-      body.should match(/version RadiantSampleExtension::VERSION\n\s+description "Adds sample to Radiant."\n\s+url "http:\/\/github.com\/extauthor\/radiant-sample-extension"/)
+      body.should match(%r(version     RadiantSampleExtension::VERSION))
+      body.should match(%r(description RadiantSampleExtension::DESCRIPTION))
+      body.should match(%r(url         RadiantSampleExtension::URL))
       body.should match(/extension_config do \|config\|((\n|\s*.*\n)*)\s+\# end/)
       body.should have_method('activate')
     end
   end
   
+  it "should require the module" do
+    'vendor/extensions/sample'.should have_generated_file('sample_extension.rb') do |body|
+      body.should match(%r(require "radiant-sample-extension"))
+    end
+  end
+
   it "should generate extension Rake tasks file" do
     'vendor/extensions/sample'.should have_generated_file('lib/tasks/sample_extension_tasks.rake') do |body|
       body.should match(r = /namespace :radiant do\n  namespace :extensions do\n    namespace :sample do\n((\n|\s*.*\n)*)    end\n  end\nend/)
@@ -47,30 +55,27 @@ describe "ExtensionGenerator with normal options" do
   it "should populate radiant-sample-extension.gemspec with gem info" do
     'vendor/extensions/sample'.should have_generated_file('radiant-sample-extension.gemspec') do |body|
       body.should match(%r(s.name        = "radiant-sample-extension"))
-      body.should match(%r(s.email       = \["ext@radiantcms.org"\]))
-      body.should match(%r(s.homepage    = "http://github.com/extauthor/radiant-sample-extension"))
-      body.should match(%r(s.authors     = \["Ext Author"\]))
+      body.should match(%r(s.email       = RadiantSampleExtension::EMAIL))
+      body.should match(%r(s.homepage    = RadiantSampleExtension::URL))
+      body.should match(%r(s.authors     = RadiantSampleExtension::AUTHORS))
+      body.should match(%r(s.description = RadiantSampleExtension::DESCRIPTION))
     end
   end
   
   it "should populate radiant-sample-extension.rb with module namespace" do
     'vendor/extensions/sample'.should have_generated_file('lib/radiant-sample-extension.rb') do |body|
       body.should match(%r(module RadiantSampleExtension))
+      body.should match(%r(VERSION     = "1\.0\.0"))
+      body.should match(%r(SUMMARY     = "Sample for Radiant CMS"))
+      body.should match(%r(DESCRIPTION = "Makes Radiant better by adding sample!"))
+      body.should match(%r(AUTHORS     = \["Ext Author"\]))
+      body.should match(%r(EMAIL       = \["ext@radiantcms.org"\]))
+      body.should match(%r(URL         = "http://github.com/extauthor/radiant-sample-extension"))
     end
   end
   
-  it "should populate version.rb with the version" do
-    'vendor/extensions/sample'.should have_generated_file('lib/radiant-sample-extension/version.rb') do |body|
-      body.should match(%r(VERSION = '1.0.0'))
-    end
-  end
-
   it "should generate extension lib directory" do
     'vendor/extensions/sample'.should have_generated_directory('lib')
-  end
-
-  it "should generate extension radiant-sample-extension directory" do
-    'vendor/extensions/sample'.should have_generated_directory('lib/radiant-sample-extension')
   end
 
   it "should generate extension controllers directory" do
@@ -162,7 +167,7 @@ describe "ExtensionGenerator with test-unit option" do
   end
   
   it "should generate README file" do
-    'vendor/extensions/sample'.should have_generated_file('README')
+    'vendor/extensions/sample'.should have_generated_file('README.md')
   end
   
   it "should generate Rake file" do
@@ -173,11 +178,19 @@ describe "ExtensionGenerator with test-unit option" do
   
   it "should generate extension init file" do
     'vendor/extensions/sample'.should have_generated_class('sample_extension', 'Radiant::Extension') do |body|
-      body.should match(/version RadiantSampleExtension::VERSION\n\s+description "Adds sample to Radiant."\n\s+url "http:\/\/yourwebsite.com\/sample"/)
+      body.should match(%r(version     RadiantSampleExtension::VERSION))
+      body.should match(%r(description RadiantSampleExtension::DESCRIPTION))
+      body.should match(%r(url         RadiantSampleExtension::URL))
       body.should have_method('activate')
     end
   end
   
+  it "should require the module" do
+    'vendor/extensions/sample'.should have_generated_file('sample_extension.rb') do |body|
+      body.should match(%r(require "radiant-sample-extension"))
+    end
+  end
+
   it "should generate extension Rake tasks file" do
     'vendor/extensions/sample'.should have_generated_file('lib/tasks/sample_extension_tasks.rake') do |body|
       body.should match(r = /namespace :radiant do\n  namespace :extensions do\n    namespace :sample do\n((\n|\s*.*\n)*)    end\n  end\nend/)

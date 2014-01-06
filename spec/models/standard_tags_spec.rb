@@ -1,7 +1,7 @@
 require File.dirname(__FILE__) + '/../spec_helper'
 
 describe "Standard Tags" do
-  dataset :users_and_pages, :file_not_found, :snippets
+  #dataset :users_and_pages, :file_not_found
 
   it '<r:page> should allow access to the current page' do
     page(:home)
@@ -23,6 +23,12 @@ describe "Standard Tags" do
 
   it '<r:path> with a relative URL root should scope to the relative root' do
     page(:home).should render("<r:path />").with_relative_root("/foo").as("/foo/")
+  end
+
+  it "<r:url> should act like r:path but issue a deprecation warning" do
+    ActionController::Base.relative_url_root = nil
+    ActiveSupport::Deprecation.should_receive(:warn).and_return(true)
+    page(:home).should render("<r:url />").as("/")
   end
 
   it '<r:parent> should change the local context to the parent page' do
@@ -101,19 +107,17 @@ describe "Standard Tags" do
         page.should render('<r:children:each paginated="true" inner_window="1" outer_window="0"><r:slug /> </r:children:each>').not_matching(/\?p=2/)
       end
     end
-    
+
     it 'should error with invalid "limit" attribute' do
-      message = "`limit' attribute of `each' tag must be a positive number between 1 and 4 digits"
+      message = "`limit' attribute must be a positive number"
       page.should render(page_children_each_tags(%{limit="a"})).with_error(message)
       page.should render(page_children_each_tags(%{limit="-10"})).with_error(message)
-      page.should render(page_children_each_tags(%{limit="50000"})).with_error(message)
     end
 
     it 'should error with invalid "offset" attribute' do
-      message = "`offset' attribute of `each' tag must be a positive number between 1 and 4 digits"
+      message = "`offset' attribute must be a positive number"
       page.should render(page_children_each_tags(%{offset="a"})).with_error(message)
       page.should render(page_children_each_tags(%{offset="-10"})).with_error(message)
-      page.should render(page_children_each_tags(%{offset="50000"})).with_error(message)
     end
 
     it 'should error with invalid "by" attribute' do
@@ -376,18 +380,18 @@ describe "Standard Tags" do
         it 'should not render the contained block if the current or ancestor pages do not have all of the specified parts' do
           page(:guests).should render('<r:if_content part="favors, madeup" inherit="true">true</r:if_content>').as('')
         end
-        
+
         describe "with find attribute set to 'any'" do
           it 'should render the contained block if the current or ancestor pages have any of the specified parts' do
             page(:guests).should render('<r:if_content part="favors, madeup" inherit="true" find="any">true</r:if_content>').as('true')
           end
-          
+
           it 'should still render the contained block if first of the specified parts has not been found' do
             page(:guests).should render('<r:if_content part="madeup, favors" inherit="true" find="any">true</r:if_content>').as('true')
           end
         end
       end
-      
+
       describe "with inherit attribute set to 'false'" do
         it 'should render the contained block if the current page has the specified parts' do
           page(:guests).should render('<r:if_content part="favors, games" inherit="false">true</r:if_content>').as('')
@@ -427,12 +431,12 @@ describe "Standard Tags" do
       it "should not render the contained block if the specified part does not exist but does exist on an ancestor" do
         page.should render('<r:unless_content part="sidebar" inherit="true">false</r:unless_content>').as('')
       end
-      
+
       describe "with find attribute set to 'any'" do
         it 'should not render the contained block if the current or ancestor pages have any of the specified parts' do
           page(:guests).should render('<r:unless_content part="favors, madeup" inherit="true" find="any">true</r:unless_content>').as('')
         end
-        
+
         it 'should still not render the contained block if first of the specified parts has not been found' do
           page(:guests).should render('<r:unless_content part="madeup, favors" inherit="true" find="any">true</r:unless_content>').as('')
         end
@@ -501,19 +505,19 @@ describe "Standard Tags" do
       pages(:home).should render('<r:aggregate paths="/parent/child; /first;">true</r:aggregate>').as('true')
     end
   end
-  
+
   describe "<r:aggregate:children>" do
     it "should expand its contents" do
-      pages(:home).should render('<r:aggregate paths="/parent/child; /first;"><r:children>true</r:children></r:aggregate>').as('true') 
+      pages(:home).should render('<r:aggregate paths="/parent/child; /first;"><r:children>true</r:children></r:aggregate>').as('true')
     end
   end
-  
+
   describe "<r:aggregate:children:count>" do
     it "should display the number of aggregated children" do
       pages(:home).should render('<r:aggregate paths="/news; /assorted"><r:children:count /></r:aggregate>').as('14')
     end
   end
-  
+
   describe "<r:aggregate:children:each>" do
     it "should loop through each child from the given paths" do
       pages(:home).should render('<r:aggregate paths="/parent; /news"><r:children:each by="title"><r:title/> </r:children:each></r:aggregate>').as('Article Article 2 Article 3 Article 4 Child Child 2 Child 3 ')
@@ -527,8 +531,34 @@ describe "Standard Tags" do
     it "should limit the number of results with the given 'limit' attribute" do
       pages(:home).should render('<r:aggregate paths="/assorted; /news"><r:children:each by="slug" order="desc" limit="3"><r:slug /> </r:children:each></r:aggregate>').as('j i h ')
     end
+
+
+    describe 'with paginated="true"' do
+      it 'should limit correctly the result set' do
+        page.pagination_parameters = {:page => 1, :per_page => 10}
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true" per_page="10"><r:slug /> </r:children:each></r:aggregate>').matching(/article article-2 article-3 article-4 a b c d e f /)
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true" per_page="2"><r:slug /> </r:children:each></r:aggregate>').not_matching(/article article-2 article-3/)
+      end
+      it 'should display a pagination control block' do
+        page.pagination_parameters = {:page => 1, :per_page => 1}
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true"><r:slug /> </r:children:each></r:aggregate>').matching(/div class="pagination"/)
+      end
+      it 'should link to the correct paginated page' do
+        page(:another)
+        page.pagination_parameters = {:page => 1, :per_page => 1}
+        page.should render('<r:find path="/assorted"><r:children:each paginated="true"><r:slug /> </r:children:each></r:find>').matching(%r{href="/another})
+      end
+      it 'should pass through selected will_paginate parameters' do
+        page(:assorted)
+        page.pagination_parameters = {:page => 5, :per_page => 1}
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true" separator="not that likely a choice"><r:slug /> </r:children:each></r:aggregate>').matching(/not that likely a choice/)
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true" previous_label="before"><r:slug /> </r:children:each></r:aggregate>').matching(/before/)
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true" next_label="after"><r:slug /> </r:children:each></r:aggregate>').matching(/after/)
+        page.should render('<r:aggregate paths="/assorted; /news"><r:children:each paginated="true" inner_window="1" outer_window="0"><r:slug /> </r:children:each></r:aggregate>').not_matching(/\?p=2/)
+      end
+    end
   end
-  
+
   describe "<r:aggregate:each>" do
     it "should loop through each of the given aggregate paths" do
       pages(:home).should render('<r:aggregate paths="/parent/child; /first; /assorted;"><r:each><r:title /> </r:each></r:aggregate>').as('Child First Assorted ')
@@ -550,23 +580,23 @@ describe "Standard Tags" do
 
   describe "<r:gravatar>" do
     it "should render the Gravatar URL of author of the current page" do
-      page.should render('<r:gravatar />').as('http://www.gravatar.com/avatar.php?gravatar_id=e64c7d89f26bd1972efa854d13d7dd61&rating=G&size=32')
+      page.should render('<r:gravatar />').as('//gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?rating=G&size=32&default=http://testhost.tld/assets/admin/avatar_32x32.png')
     end
 
     it "should render the Gravatar URL of the name user" do
-      page.should render('<r:gravatar name="Admin" />').as('http://www.gravatar.com/avatar.php?gravatar_id=e64c7d89f26bd1972efa854d13d7dd61&rating=G&size=32')
+      page.should render('<r:gravatar name="Admin" />').as('//gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?rating=G&size=32&default=http://testhost.tld/assets/admin/avatar_32x32.png')
     end
 
     it "should render the default avatar when the user has not set an email address" do
-      page.should render('<r:gravatar name="Designer" />').as('http://testhost.tld/images/admin/avatar_32x32.png')
+      page.should render('<r:gravatar name="Designer" />').as('http://testhost.tld/assets/admin/avatar_32x32.png')
     end
 
     it "should render the specified size" do
-      page.should render('<r:gravatar name="Designer" size="96px" />').as('http://testhost.tld/images/admin/avatar_96x96.png')
+      page.should render('<r:gravatar name="Designer" size="96px" />').as('http://testhost.tld/assets/admin/avatar_96x96.png')
     end
 
     it "should render the specified rating" do
-      page.should render('<r:gravatar rating="X" />').as('http://www.gravatar.com/avatar.php?gravatar_id=e64c7d89f26bd1972efa854d13d7dd61&rating=X&size=32')
+      page.should render('<r:gravatar rating="X" />').as('//gravatar.com/avatar/e64c7d89f26bd1972efa854d13d7dd61?rating=X&size=32&default=http://testhost.tld/assets/admin/avatar_32x32.png')
     end
   end
 
@@ -627,8 +657,10 @@ describe "Standard Tags" do
     end
 
     it "should pass HTML attributes to the <a> tag" do
-      expected = '<a href="/assorted/" class="test" id="assorted">Assorted</a>'
-      page.should render('<r:link class="test" id="assorted" />').as(expected)
+      input = '<r:link class="test" id="assorted" />'
+      page.should render(input).matching(/\ class="test"/)
+      page.should render(input).matching(/\ href="\/assorted\/"/)
+      page.should render(input).matching(/\ id="assorted"/)
     end
 
     it "should add the anchor attribute to the link as a URL anchor" do
@@ -645,65 +677,6 @@ describe "Standard Tags" do
     end
   end
 
-  describe "<r:snippet>" do
-    it "should render the contents of the specified snippet" do
-      page.should render('<r:snippet name="first" />').as('test')
-    end
-
-    it "should render an error when the snippet does not exist" do
-      page.should render('<r:snippet name="non-existant" />').with_error("snippet 'non-existant' not found")
-    end
-
-    it "should render an error when not given a 'name' attribute" do
-      page.should render('<r:snippet />').with_error("`snippet' tag must contain a `name' attribute.")
-    end
-
-    it "should filter the snippet with its assigned filter" do
-      page.should render('<r:page><r:snippet name="markdown" /></r:page>').matching(%r{<p><strong>markdown</strong></p>})
-    end
-
-    it "should maintain the global page inside the snippet" do
-      page(:parent).should render('<r:snippet name="global_page_cascade" />').as("#{@page.title} " * @page.children.count)
-    end
-
-    it "should maintain the global page when the snippet renders recursively" do
-      page(:child).should render('<r:snippet name="recursive" />').as("Great GrandchildGrandchildChild")
-    end
-
-    it "should render the specified snippet when called as an empty double-tag" do
-      page.should render('<r:snippet name="first"></r:snippet>').as('test')
-    end
-
-    it "should capture contents of a double tag, substituting for <r:yield/> in snippet" do
-      page.should render('<r:snippet name="yielding">inner</r:snippet>').
-        as('Before...inner...and after')
-    end
-
-    it "should do nothing with contents of double tag when snippet doesn't yield" do
-      page.should render('<r:snippet name="first">content disappears!</r:snippet>').
-        as('test')
-    end
-
-    it "should render nested yielding snippets" do
-      page.should render('<r:snippet name="div_wrap"><r:snippet name="yielding">Hello, World!</r:snippet></r:snippet>').
-      as('<div>Before...Hello, World!...and after</div>')
-    end
-
-    it "should render double-tag snippets called from within a snippet" do
-      page.should render('<r:snippet name="nested_yields">the content</r:snippet>').
-        as('<snippet name="div_wrap">above the content below</snippet>')
-    end
-
-    it "should render contents each time yield is called" do
-      page.should render('<r:snippet name="yielding_often">French</r:snippet>').
-        as('French is Frencher than French')
-    end
-  end
-
-  it "should do nothing when called from page body" do
-    page.should render('<r:yield/>').as("")
-  end
-
   it '<r:random> should render a randomly selected contained <r:option>' do
     page.should render("<r:random> <r:option>1</r:option> <r:option>2</r:option> <r:option>3</r:option> </r:random>").matching(/^(1|2|3)$/)
   end
@@ -715,7 +688,7 @@ describe "Standard Tags" do
   it '<r:comment> should render nothing it contains' do
     page.should render('just a <r:comment>small </r:comment>test').as('just a test')
   end
-  
+
   describe '<r:hide>' do
     it "should not display it's contents" do
       page.should render('just a <r:hide>small </r:hide>test').as('just a test')
@@ -849,10 +822,6 @@ describe "Standard Tags" do
     page.should render('<r:escape_html><strong>a bold move</strong></r:escape_html>').as('&lt;strong&gt;a bold move&lt;/strong&gt;')
   end
 
-  it '<r:rfc1123_date> should render an RFC1123-compatible date' do
-    page(:dated).should render('<r:rfc1123_date />').as('Wed, 11 Jan 2006 00:00:00 GMT')
-  end
-
   describe "<r:breadcrumbs>" do
     it "should render a series of breadcrumb links separated by &gt;" do
       expected = %{<a href="/">Home</a> &gt; <a href="/parent/">Parent</a> &gt; <a href="/parent/child/">Child</a> &gt; <a href="/parent/child/grandchild/">Grandchild</a> &gt; Great Grandchild}
@@ -886,7 +855,9 @@ describe "Standard Tags" do
       end
 
       it "set to a malformatted regexp should render an error" do
-        page.should render('<r:if_path matches="as(sorted/$">true</r:if_path>').with_error("Malformed regular expression in `matches' argument of `if_path' tag: unmatched (: /as(sorted\\/$/")
+        expected_error = "Malformed regular expression in `matches' argument of `if_path' tag: " + (RUBY_VERSION =~ /^1\.9/ ? "end pattern with unmatched parenthesis: /as(sorted\\/$/i" : "unmatched (: /as(sorted\\/$/")
+
+        page.should render('<r:if_path matches="as(sorted/$">true</r:if_path>').with_error(expected_error)
       end
 
       it "without 'ignore_case' attribute should ignore case by default" do
@@ -920,7 +891,9 @@ describe "Standard Tags" do
       end
 
       it "set to a malformatted regexp should render an error" do
-        page.should render('<r:unless_path matches="as(sorted/$">true</r:unless_path>').with_error("Malformed regular expression in `matches' argument of `unless_path' tag: unmatched (: /as(sorted\\/$/")
+        expected_error = "Malformed regular expression in `matches' argument of `unless_path' tag: " + (RUBY_VERSION =~ /^1\.9/ ? "end pattern with unmatched parenthesis: /as(sorted\\/$/i" : "unmatched (: /as(sorted\\/$/")
+
+        page.should render('<r:unless_path matches="as(sorted/$">true</r:unless_path>').with_error(expected_error)
       end
 
       it "without 'ignore_case' attribute should ignore case by default" do
@@ -944,12 +917,17 @@ describe "Standard Tags" do
   end
 
   describe "<r:cycle>" do
+    subject { page }
     it "should render passed values in succession" do
       page.should render('<r:cycle values="first, second" /> <r:cycle values="first, second" />').as('first second')
     end
 
     it "should return to the beginning of the cycle when reaching the end" do
       page.should render('<r:cycle values="first, second" /> <r:cycle values="first, second" /> <r:cycle values="first, second" />').as('first second first')
+    end
+
+    it "should start at a given start value" do
+      page.should render('<r:cycle values="first, second, third" start="second" /> <r:cycle values="first, second, third" start="second" /> <r:cycle values="first, second, third" start="second" />').as('second third first')
     end
 
     it "should use a default cycle name of 'cycle'" do
@@ -964,9 +942,11 @@ describe "Standard Tags" do
       page.should render('<r:cycle values="first, second" /> <r:cycle values="first, second" reset="true"/>').as('first first')
     end
 
-    it "should require the values attribute" do
-      page.should render('<r:cycle />').with_error("`cycle' tag must contain a `values' attribute.")
-    end
+    it { should render('<r:cycle /> <r:cycle />').as('0 1') }
+    it { should render('<r:cycle start="3" /> <r:cycle start="3" /> <r:cycle start="3" />').as('3 4 5') }
+    it { should render('<r:cycle start="3" /> <r:cycle name="other" /> <r:cycle start="3" />').as('3 0 4') }
+    it { should render('<r:cycle start="3" /> <r:cycle name="other" start="23" /> <r:cycle />').as('3 23 4') }
+    it { should render('<r:cycle start="3" /> <r:cycle name="other" start="23" /> <r:cycle reset="true" />').as('3 23 0') }
   end
 
   describe "<r:if_dev>" do
@@ -977,7 +957,7 @@ describe "Standard Tags" do
     it "should not render the contained block when not on the dev site" do
       page.should render('-<r:if_dev>dev</r:if_dev>-').as('--')
     end
-    
+
     it "should not render the contained block when no request is present" do
       page(:devtags).render_part('if_dev').should_not have_text('dev')
     end
@@ -1112,7 +1092,14 @@ describe "Standard Tags" do
       it { should render('<r:unless_field name="blank" matches="[^\s]">Not here</r:unless_field>').as('Not here') }
       it { should render('<r:unless_field name="bogus" matches="something">Not here</r:unless_field>').as('Not here') }
     end
-    
+
+  end
+
+  describe "Site tags" do
+    subject { page(:home) }
+    it { should render('<r:site:title />').as('Your site title')}
+    it { should render('<r:site:host />').as('www.example.com')}
+    it { should render('<r:site:dev_host />').as('')}
   end
 
   private

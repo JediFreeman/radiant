@@ -1,11 +1,11 @@
 require 'simpleton'
 require 'ostruct'
+require 'radiant/admin_ui/region_set'
+require 'radiant/admin_ui/region_partials'
 
 module Radiant
   class AdminUI
-    # This may be loaded before ActiveSupport, so do an explicit require
-    require 'radiant/admin_ui/region_set'
-
+    include Simpleton
     class DuplicateTabNameError < StandardError; end
 
     # The NavTab Class holds the structure of a navigation tab (including
@@ -48,7 +48,7 @@ module Radiant
       end
 
       alias :add :<<
-      
+
       def add_item(*args)
         options = args.extract_options!
         options.symbolize_keys!
@@ -90,10 +90,10 @@ module Radiant
       def relative_url
         File.join(ActionController::Base.relative_url_root || '', url)
       end
-      
+
       private
       def visible_by_controller?(user)
-        params = ActionController::Routing::Routes.recognize_path(url, :method => :get)
+        params = Radiant::Engine.routes.recognize_path(url, :method => :get)
         if params && params[:controller]
           klass = "#{params[:controller].camelize}Controller".constantize
           klass.user_has_access_to_action?(user, params[:action])
@@ -103,31 +103,34 @@ module Radiant
       end
     end
 
-    include Simpleton
-
     attr_accessor :nav
-    
+
     def nav_tab(*args)
       NavTab.new(*args)
     end
-    
+
     def nav_item(*args)
       NavSubItem.new(*args)
     end
-    
+
     def tabs
       nav['Content']
     end
 
     # Region sets
-    %w{page snippet layout user configuration extension}.each do |controller|
+    %w{page layout user configuration extension}.each do |controller|
       attr_accessor controller
       alias_method "#{controller}s", controller
     end
 
     def initialize
-      @nav = NavTab.new("Tab Container")
+      initialize_nav
       load_default_regions
+    end
+
+    def initialize_nav
+      @nav = NavTab.new("Tab Container")
+      load_default_nav
     end
 
     def load_default_nav
@@ -137,7 +140,6 @@ module Radiant
 
       design = nav_tab("Design")
       design << nav_item("Layouts", "/admin/layouts")
-      design << nav_item("Snippets", "/admin/snippets")
       nav << design
 
       settings = nav_tab("Settings")
@@ -150,7 +152,6 @@ module Radiant
 
     def load_default_regions
       @page = load_default_page_regions
-      @snippet = load_default_snippet_regions
       @layout = load_default_layout_regions
       @user = load_default_user_regions
       @configuration = load_default_configuration_regions
@@ -160,7 +161,7 @@ module Radiant
     private
 
     def load_default_page_regions
-      returning OpenStruct.new do |page|
+      OpenStruct.new.tap do |page|
         page.edit = RegionSet.new do |edit|
           edit.main.concat %w{edit_header edit_form edit_popups}
           edit.form.concat %w{edit_title edit_extended_metadata edit_page_parts}
@@ -177,7 +178,7 @@ module Radiant
     end
 
     def load_default_user_regions
-      returning OpenStruct.new do |user|
+      OpenStruct.new.tap do |user|
         user.preferences = RegionSet.new do |preferences|
           preferences.main.concat %w{edit_header edit_form}
           preferences.form.concat %w{edit_name edit_email edit_username edit_password edit_locale}
@@ -198,25 +199,8 @@ module Radiant
       end
     end
 
-    def load_default_snippet_regions
-      returning OpenStruct.new do |snippet|
-        snippet.edit = RegionSet.new do |edit|
-          edit.main.concat %w{edit_header edit_form}
-          edit.form.concat %w{edit_title edit_content edit_filter}
-          edit.form_bottom.concat %w{edit_buttons edit_timestamp}
-        end
-        snippet.index = RegionSet.new do |index|
-          index.top.concat %w{}
-          index.thead.concat %w{title_header actions_header}
-          index.tbody.concat %w{title_cell actions_cell}
-          index.bottom.concat %w{new_button}
-        end
-        snippet.new = snippet.edit
-      end
-    end
-
     def load_default_layout_regions
-      returning OpenStruct.new do |layout|
+      OpenStruct.new.tap do |layout|
         layout.edit = RegionSet.new do |edit|
           edit.main.concat %w{edit_header edit_form}
           edit.form.concat %w{edit_title edit_extended_metadata edit_content}
@@ -233,7 +217,7 @@ module Radiant
     end
 
     def load_default_configuration_regions
-      returning OpenStruct.new do |configuration|
+      OpenStruct.new.tap do |configuration|
         configuration.show = RegionSet.new do |show|
           show.user.concat %w{preferences}
           show.config.concat %w{site defaults users}
@@ -247,7 +231,7 @@ module Radiant
     end
 
     def load_default_extension_regions
-      returning OpenStruct.new do |extension|
+      OpenStruct.new.tap do |extension|
         extension.index = RegionSet.new do |index|
           index.thead.concat %w{title_header website_header version_header}
           index.tbody.concat %w{title_cell website_cell version_cell}

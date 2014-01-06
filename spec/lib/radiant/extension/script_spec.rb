@@ -47,14 +47,42 @@ describe "Radiant::Extension::Script::Util" do
   it "should determine extension paths" do
     # Bad coupling, but will work by default
     extension_paths.should be_kind_of(Array)
-    extension_paths.should include("#{RADIANT_ROOT}/vendor/extensions/archive")
+    extension_paths.should include("#{RADIANT_ROOT}/test/fixtures/extensions/basic")
   end
 
   it "should determine whether an extension is installed" do
     # Bad coupling, but will work by default
     @script = mock('script action')
     @script.extend Radiant::Extension::Script::Util
-    @script.extension_name = 'archive'
+    @script.extension_name = 'basic'
+    @script.should be_installed
+  end
+
+  it "should determine whether an extension is not installed" do
+    @script = mock('script action',:extension_paths => ['/path/to/extension/html_tags'])
+    @script.extend Radiant::Extension::Script::Util
+    @script.extension_name = 'tags'
+    @script.should_not be_installed
+  end
+
+  it "should determine whether an extension is installed" do
+    @script = mock('script action',:extension_paths => ['tags'])
+    @script.extend Radiant::Extension::Script::Util
+    @script.extension_name = 'tags'
+    @script.should be_installed
+  end
+
+  it "should determine whether an extension is installed" do
+    @script = mock('script action',:extension_paths => ['/path/to/extension/tags'])
+    @script.extend Radiant::Extension::Script::Util
+    @script.extension_name = 'tags'
+    @script.should be_installed
+  end
+
+  it "should determine whether an extension is installed on windows system" do
+    @script = mock('script action',:extension_paths => ['c:\path\to\extension\tags'])
+    @script.extend Radiant::Extension::Script::Util
+    @script.extension_name = 'tags'
     @script.should be_installed
   end
 
@@ -98,20 +126,19 @@ describe "Radiant::Extension::Script::Install" do
 end
 
 describe "Radiant::Extension::Script::Uninstall" do
-
   before :each do
-    @extension = mock('Extension', :uninstall => true, :name => 'archive')
+    @extension = mock('Extension', :uninstall => true, :name => 'basic')
     Registry::Extension.stub!(:find).and_return([@extension])
   end
 
   it "should read the extension name from the command line" do
-    @uninstall = Radiant::Extension::Script::Uninstall.new ['archive']
-    @uninstall.extension_name.should == 'archive'
+    @uninstall = Radiant::Extension::Script::Uninstall.new ['basic']
+    @uninstall.extension_name.should == 'basic'
   end
 
   it "should attempt to find the extension and uninstall it" do
     @extension.should_receive(:uninstall).and_return(true)
-    @uninstall = Radiant::Extension::Script::Uninstall.new ['archive']
+    @uninstall = Radiant::Extension::Script::Uninstall.new ['basic']
   end
 
   it "should fail if an extension name is not given" do
@@ -178,7 +205,8 @@ describe "Registry::Action" do
   end
 
   it "should shell out with the specified rake task if it exists" do
-    rake_file = File.join(RADIANT_ROOT, 'vendor', 'rails', 'railties', 'lib', 'tasks', 'misc.rake')
+    rails_gemspec = Bundler.load.specs.find{|s| s.name == 'rails' }
+    rake_file = File.join(rails_gemspec.full_gem_path, 'lib', 'tasks', 'misc.rake')
     load rake_file
     @action.should_receive(:`).with("rake secret RAILS_ENV=#{RAILS_ENV}")
     @action.rake('secret')

@@ -1,7 +1,7 @@
 require 'rubygems'
 require 'rake/testtask'
-require 'rake/rdoctask'
-require 'rake/gempackagetask'
+require 'rdoc/task'
+require 'rubygems/package_task'
 require 'radiant'
 
 PKG_NAME = 'radiant'
@@ -17,7 +17,7 @@ RUBY_FORGE_GROUPID = '1337'
 RUBY_FORGE_PACKAGEID = '1638'
 
 RDOC_TITLE = "Radiant -- Publishing for Small Teams"
-RDOC_EXTRAS = ["README", "CONTRIBUTORS", "CHANGELOG", "INSTALL", "LICENSE"]
+RDOC_EXTRAS = ["README.md", "CONTRIBUTORS.md", "CHANGELOG.md", "INSTALL.md", "LICENSE.md"]
 
 namespace 'radiant' do
   spec = Gem::Specification.new do |s|
@@ -31,12 +31,12 @@ namespace 'radiant' do
     s.rubyforge_project = RUBY_FORGE_PROJECT
     s.platform = Gem::Platform::RUBY
     s.bindir = 'bin'
-    s.executables = (Dir['bin/*'] + Dir['scripts/*']).map { |file| File.basename(file) } 
+    s.executables = (Dir['bin/*'] + Dir['scripts/*']).map { |file| File.basename(file) }
     s.add_dependency 'rake', '>= 0.8.3'
     s.add_dependency 'rack', '~> 1.1.0' # No longer bundled in actionpack
     s.add_dependency 'compass', '~> 0.10.4'
     s.add_dependency 'will_paginate', '~> 2.3.11'
-    s.add_dependency 'RedCloth', '>=4.0.0'
+    s.add_dependency 'RedCloth', '>=4.2.0'
     s.has_rdoc = true
     s.rdoc_options << '--title' << RDOC_TITLE << '--line-numbers' << '--main' << 'README'
     rdoc_excludes = Dir["**"].reject { |f| !File.directory? f }
@@ -61,6 +61,7 @@ namespace 'radiant' do
     files.exclude /^pkg/
     files.include 'public/.htaccess'
     files.exclude /\btmp\b/
+    files.include 'vendor/extensions/.keep'
     files.exclude 'radiant.gemspec'
     # Read .gitignore from plugins and exclude those files
     Dir['vendor/plugins/*/.gitignore'].each do |gi|
@@ -72,7 +73,7 @@ namespace 'radiant' do
     s.files = files.to_a
   end
 
-  Rake::GemPackageTask.new(spec) do |pkg|
+  Gem::PackageTask.new(spec) do |pkg|
     pkg.need_zip = true
     pkg.need_tar = true
   end
@@ -96,13 +97,6 @@ namespace 'radiant' do
         sh "#{sudo}gem install #{latest}"
       end
     end
-  end
-
-  task :gem => [ :generate_cached_assets ]
-
-  desc "Generates cached assets from source files"
-  task :generate_cached_assets do
-    TaskSupport.cache_admin_js
   end
 
   desc "Publish the release files to RubyForge."

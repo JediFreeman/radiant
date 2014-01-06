@@ -31,22 +31,22 @@ Supports:       Radiant #{supports_radiant_version}
 
   class Action
     def rake(command)
-      `rake #{command} RAILS_ENV=#{RAILS_ENV}` if tasks_include? command
+      puts "rake #{command}"
+      puts `rake #{command} RAILS_ENV=#{RAILS_ENV}` if tasks_include? command
     end
 
     def tasks_include?(command)
-      extension = command.split('radiant:extensions:')
-      if extension.length > 1
-        extension = extension.reject{|e| e.blank? }[0]
+      command = command.split(':')
+      if command.length > 1 && command[0..1] == ['radiant','extensions']
+        extension = command[2]
+        task = "radiant:extensions:#{extension}:#{command[3].split[0]}"
       else
-        extension = extension.to_s
+        extension = task = command[0]
       end
       rake_file = File.join(RAILS_ROOT, 'vendor', 'extensions', extension) + '/lib/tasks/' + extension + '_extension_tasks.rake'
-      if File.exist? rake_file
-        load rake_file
-      end
+      load rake_file if File.exist? rake_file
       tasks = Rake.application.tasks.map(&:name)
-      tasks.include? "#{command}"
+      tasks.include? task
     end
     
     def file_utils
@@ -274,7 +274,7 @@ module Radiant
         end
 
         def installed?
-          path_match = Regexp.compile("#{extension_name}$")
+          path_match = Regexp.compile("(^|/|\\\\)#{extension_name}$")
           extension_paths.any? {|p| p =~ path_match }
         end
 
@@ -283,7 +283,9 @@ module Radiant
         end
 
         def extension_paths
-          [RAILS_ROOT, RADIANT_ROOT].uniq.map { |p| Dir["#{p}/vendor/extensions/*"] }.flatten
+          paths = [RAILS_ROOT, RADIANT_ROOT].uniq.map { |p| Dir["#{p}/vendor/extensions/*"] }
+          paths.unshift Dir["#{RADIANT_ROOT}/test/fixtures/extensions/*"] if RAILS_ENV == 'test'    #nasty
+          paths.flatten
         end
 
         def load_extensions
@@ -305,13 +307,13 @@ module Radiant
             puts "#{extension_name} is already installed."
           else
             find_extension
+            if registered?
+              extension.install
+            else
+              raise ArgumentError, "#{extension_name} is not available in the registry."
+            end
           end
-          if registered?
-            extension.install
-          else
-            raise ArgumentError, "#{extension_name} is not available in the registry."
-          end
-         end
+        end
       end
 
       class Uninstall
@@ -341,7 +343,7 @@ module Radiant
       class Help
         def initialize(args=[])
           command = args.shift
-          command = 'help' unless self.class.instance_methods(false).include?(command)
+          command = 'help' unless self.class.instance_methods(false).collect {|im| im.to_s}.include?(command.to_s)
           send(command)
         end
 
@@ -385,7 +387,7 @@ module Radiant
 
         private
           def command_names
-            (Radiant::Extension::Script.constants - ['Util']).sort.map {|n| n.underscore }.join(", ")
+            (Radiant::Extension::Script.constants - ['Util']).sort.map {|n| n.to_s.underscore }.join(", ")
           end
       end
     end

@@ -7,12 +7,16 @@ module Radiant
     include Simpleton
     include Annotatable
 
-    annotate :version, :description, :url, :root, :extension_name
+    annotate :version, :description, :url, :extension_name, :path
 
     attr_writer :active
-
+    
     def active?
       @active
+    end
+    
+    def root
+      path.to_s
     end
     
     def migrated?
@@ -27,9 +31,13 @@ module Radiant
     def routed?
       File.exist?(routing_file)
     end
-
+    
     def migrations_path
       File.join(self.root, 'db', 'migrate')
+    end
+    
+    def migrates_from
+      @migrates_from ||= {}
     end
     
     def routing_file
@@ -41,7 +49,7 @@ module Radiant
         load(initializer)
       end
     end
-
+    
     def migrator
       unless @migrator
         extension = self
@@ -49,16 +57,26 @@ module Radiant
       end
       @migrator
     end
-
+    
     def admin
       AdminUI.instance
     end
     
-    def tab(name,&block)
+    def tab(name, options={}, &block)
       @the_tab = admin.nav[name]
       unless @the_tab
         @the_tab = Radiant::AdminUI::NavTab.new(name)
-        admin.nav << @the_tab
+        before = options.delete(:before)
+        after = options.delete(:after)
+        tab_name = before || after
+        tab_object = admin.nav[tab_name]
+        if tab_object
+          index = admin.nav.index(tab_object)
+          index += 1 unless before
+          admin.nav.insert(index, @the_tab)
+        else
+          admin.nav << @the_tab
+        end
       end
       if block_given?
         block.call(@the_tab)
@@ -90,7 +108,7 @@ module Radiant
       def activate_extension
         return if instance.active?
         instance.activate if instance.respond_to? :activate
-        ActionController::Routing::Routes.add_configuration_file(instance.routing_file) if instance.routed?
+        ActionController::Routing::Routes.configuration_files.unshift(instance.routing_file) if instance.routed?
         ActionController::Routing::Routes.reload
         instance.active = true
       end
@@ -103,17 +121,12 @@ module Radiant
       end
       alias :deactivate :deactivate_extension
 
-      def define_routes(&block)
-        ActiveSupport::Deprecation.warn("define_routes has been deprecated in favor of your extension's config/routes.rb",caller)
-        route_definitions << block
-      end
-
       def inherited(subclass)
         subclass.extension_name = subclass.name.to_name('Extension')
       end
 
-      def route_definitions
-        @route_definitions ||= []
+      def migrate_from(extension_name, until_migration=nil)
+        instance.migrates_from[extension_name] = until_migration
       end
 
       # Expose the configuration object for init hooks
@@ -127,6 +140,7 @@ module Radiant
       def extension_config(&block)
         yield Rails.configuration
       end
+      
     end
   end
 end

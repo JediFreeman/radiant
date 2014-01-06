@@ -11,156 +11,166 @@ class PageSpecTestPage < Page
     }
   end
 
-  tag 'test1' do
+  tag 'test1' do |tag|
     'Hello world!'
   end
 
-  tag 'test2' do
+  tag 'test2' do |tag|
     'Another test.'
+  end
+
+  tag 'frozen_string' do |tag|
+    'Brain'.freeze
+  end
+end
+
+class VirtualSpecPage < Page
+  def virtual?
+    true
   end
 end
 
 describe Page, 'validations' do
-  dataset :pages
-  test_helper :validations
-  
-  let(:page){ Page.new(page_params)}
+  test_helper :page
 
-  before :each do
-    @page = @model = Page.new(page_params)
-  end
-  
-  it 'should not be valid with a slug length greater than 100 characters' do
-    page.valid?.should be_true
-    page.slug = 'x'*101
-    page.valid?.should be_false
-  end
-  
-  it 'should not be valid with a title length greater than 255 characters' do
-    page.valid?.should be_true
-    page.title = 'x'*256
-    page.valid?.should be_false
-  end
-  
-  it 'should not be valid with a breadcrumb length greater than 160 characters' do
-    page.valid?.should be_true
-    page.breadcrumb = 'x'*161
-    page.valid?.should be_false
-  end
+  let(:page){ FactoryGirl.build(:page) }
 
-  it 'should validate length of' do
-    {
-      :title => 255,
-      :slug => 100,
-      :breadcrumb => 160
-    }.each do |field, max|
-      assert_invalid field, ('this must not be longer than %d characters' % max), 'x' * (max + 1)
-      assert_valid field, 'x' * max
+  describe 'breadcrumb' do
+
+    it 'is invalid when longer than 160 characters' do
+      page.breadcrumb = 'x' * 161
+      expect(page.errors_on(:breadcrumb)).to include('this must not be longer than 160 characters')
     end
-  end
 
-  it 'should validate presence of' do
-    [:title, :slug, :breadcrumb].each do |field|
-      assert_invalid field, 'this must not be blank', '', ' ', nil
+    it 'is invalid when blank' do
+      page.breadcrumb = ''
+      expect(page.errors_on(:breadcrumb)).to include("this must not be blank")
     end
-  end
 
-  it 'should validate format of' do
-    @page.parent = pages(:home)
-    assert_valid :slug, 'abc', 'abcd-efg', 'abcd_efg', 'abc.html', '/', '123'
-    assert_invalid :slug, 'this does not match the expected format', 'abcd efg', ' abcd', 'abcd/efg'
-  end
-
-  it 'should validate numericality of' do
-    assert_invalid :status_id, 'this must not be blank', '', nil
-    [:id, :status_id, :parent_id].each do |field|
-      assert_valid field, '1', '2'
-      assert_invalid field, 'this must be a number', 'abcd', '1,2', '1.3'
+    it 'is valid when 160 characters or shorter' do
+      page.breadcrumb = 'x' * 160
+      expect(page.errors_on(:breadcrumb)).to be_blank
     end
+
   end
 
-  it 'should validate uniqueness of' do
-    @page.parent = pages(:parent)
-    assert_invalid :slug, 'this slug is already in use by a sibling of this page', 'child', 'child-2', 'child-3'
-    assert_valid :slug, 'child-4'
-  end
+  describe 'slug' do
 
-  it 'should allow mass assignment for class name' do
-    @page.attributes = { :class_name => 'ArchivePage' }
-    assert_valid @page
-    @page.class_name.should == 'ArchivePage'
-  end
-
-  it 'should not be valid when class name is not a descendant of page' do
-    @page.class_name = 'Object'
-    @page.valid?.should == false
-    assert_not_nil @page.errors.on(:class_name)
-    @page.errors.on(:class_name).should == 'must be set to a valid descendant of Page'
-  end
-
-  it 'should not be valid when class name is not a descendant of page and it is set through mass assignment' do
-    @page.attributes = {:class_name => 'Object' }
-    @page.valid?.should == false
-    assert_not_nil @page.errors.on(:class_name)
-    @page.errors.on(:class_name).should == 'must be set to a valid descendant of Page'
-  end
-
-  it 'should be valid when class name is page or empty or nil' do
-    [nil, '', 'Page'].each do |value|
-      @page = ArchivePage.new(page_params)
-      @page.class_name = value
-      assert_valid @page
-      @page.class_name.should == value
+    it 'is invalid when longer than 100 characters' do
+      page.slug = 'x' * 101
+      expect(page.errors_on(:slug)).to include('this must not be longer than 100 characters')
     end
-  end
-end
 
-describe Page, "behaviors" do
-  it 'should include' do
-    Page.included_modules.should include(StandardTags)
-    Page.included_modules.should include(Annotatable)
+    it 'is invalid when blank' do
+      page.slug = ''
+      expect(page.errors_on(:slug)).to include("this must not be blank")
+    end
+
+    it 'is valid when 100 characters or shorter' do
+      page.slug = 'x' * 100
+      expect(page.errors_on(:slug)).to be_blank
+    end
+
+    it 'is invalid when in the incorrect format' do
+      ['this does not match the expected format', 'abcd efg', ' abcd', 'abcd/efg'].each do |sample|
+        page.slug = sample
+        expect(page.errors_on(:slug)).to include('this does not match the expected format')
+      end
+    end
+
+    it 'is invalid when the same value exists with the same parent' do
+      page.parent_id = 1
+      page.save!
+      other = Page.new(page_params.merge(:parent_id => 1))
+      expect{other.save!}.to raise_error(ActiveRecord::RecordInvalid)
+      expect(other.errors_on(:slug)).to include(I18n.t('activerecord.errors.models.page.attributes.slug.taken'))
+    end
+
+  end
+
+  describe 'title' do
+
+    it 'is invalid when longer than 255 characters' do
+      page.title = 'x' * 256
+      expect(page.errors_on(:title)).to include('this must not be longer than 255 characters')
+    end
+
+    it 'is invalid when blank' do
+      page.title = ''
+      expect(page.errors_on(:title)).to include("this must not be blank")
+    end
+
+    it 'is valid when 255 characters or shorter' do
+      page.title = 'x' * 255
+      expect(page.errors_on(:title)).to be_blank
+    end
+
+  end
+
+  describe 'class_name' do
+    it 'should allow mass assignment for class name' do
+      page.attributes = { :class_name => 'PageSpecTestPage' }
+      expect(page.errors_on(:class_name)).to be_blank
+      expect(page.class_name).to be_eql('PageSpecTestPage')
+    end
+
+    it 'should not be valid when class name is not a descendant of page' do
+      page.class_name = 'Object'
+      expect(page.errors_on(:class_name)).to include('must be set to a valid descendant of Page')
+    end
+
+    it 'should not be valid when class name is not a descendant of page and it is set through mass assignment' do
+      page.attributes = {:class_name => 'Object' }
+      expect(page.errors_on(:class_name)).to include('must be set to a valid descendant of Page')
+    end
+
+    it 'should be valid when class name is page or empty or nil' do
+      [nil, '', 'Page'].each do |value|
+        page = PageSpecTestPage.new(page_params)
+        page.class_name = value
+        expect(page.errors_on(:class_name)).to be_blank
+        expect(page.class_name).to be_eql(value)
+      end
+    end
   end
 end
 
 describe Page, "layout" do
-  dataset :pages_with_layouts
+  let(:page_with_layout){ FactoryGirl.create(:page_with_layout) }
+  let(:child_page){ FactoryGirl.build(:page) do |child|
+      child.parent_id = page_with_layout.id
+    end }
 
   it 'should be accessible' do
-    @page = pages(:first)
-    @page.layout_id.should == layout_id(:main)
-    @page.layout.name.should == "Main"
+    page_with_layout.layout.name.should == "Main Layout"
   end
 
   it 'should be inherited' do
-    @page = pages(:inherited_layout)
-    @page.layout_id.should == nil
-    @page.layout.should == @page.parent.layout
+    child_page.layout_id.should == nil
+    child_page.layout.should == page_with_layout.layout
   end
 end
 
 describe Page do
-  dataset :pages
-  
-  let(:page){ pages(:first ) }
-  let(:home){ pages(:home) }
+  let(:page){ FactoryGirl.create(:page) }
   let(:parent){ pages(:parent) }
   let(:child){ pages(:child) }
   let(:part){ page.parts(:body) }
 
   describe '#parts' do
     it 'should return PageParts with a page_id of the page id' do
-      home.parts.sort_by{|p| p.name }.should == PagePart.find_all_by_page_id(home.id).sort_by{|p| p.name }
+      page.parts.sort_by{|p| p.name }.should == PagePart.find_all_by_page_id(page.id).sort_by{|p| p.name }
     end
   end
 
   it 'should destroy dependant parts' do
-    page.parts.create(page_part_params(:name => 'test'))
+    page.parts << FactoryGirl.build(:page_part, name: 'test')
     page.parts.find_by_name('test').should_not be_nil
     id = page.id
     page.destroy
     PagePart.find_by_page_id(id).should be_nil
   end
-  
+
   describe '#part' do
     it 'should find the part with a name of the given string' do
       page.part('body').should == page.parts.find_by_name('body')
@@ -191,9 +201,10 @@ describe Page do
       page.field(:description).should == field
     end
   end
-  
+
   describe '#has_part?' do
     it 'should return true for a valid part' do
+      page.parts.build(:name => 'body', :content => 'Hello world!')
       page.has_part?('body').should == true
       page.has_part?(:body).should == true
     end
@@ -202,24 +213,40 @@ describe Page do
       page.has_part?(:obviously_false_part_name).should == false
     end
   end
-  
+
   describe '#inherits_part?' do
     it 'should return true if any ancestor page has a part of the given name' do
+      page.parts.create(:name => 'sidebar')
+      child = FactoryGirl.build(:page) do |child|
+        child.parent_id = page.id
+      end
       child.has_part?(:sidebar).should be_false
       child.inherits_part?(:sidebar).should be_true
     end
     it 'should return false if any ancestor page does not have a part of the given name' do
-      home.has_part?(:sidebar).should be_true
-      home.inherits_part?(:sidebar).should be_false
+      child = FactoryGirl.build(:page) do |child|
+        child.parent_id = page.id
+      end
+      child.parts.build(:name => 'sidebar')
+      child.has_part?(:sidebar).should be_true
+      child.inherits_part?(:sidebar).should be_false
     end
   end
-  
+
   describe '#has_or_inherits_part?' do
+    let(:child){
+      FactoryGirl.build(:page) do |child|
+        child.parent_id = page.id
+      end
+    }
+    before do
+      page.parts.create(:name => 'sidebar')
+    end
     it 'should return true if the current page or any ancestor has a part of the given name' do
-      child.has_or_inherits_part?(:sidebar).should be_true
+      expect(child.has_or_inherits_part?(:sidebar)).to be_true
     end
     it 'should return false if the current part or any ancestor does not have a part of the given name' do
-      child.has_or_inherits_part?(:obviously_false_part_name).should be_false
+      expect(child.has_or_inherits_part?(:obviously_false_part_name)).to be_false
     end
   end
 
@@ -238,7 +265,7 @@ describe Page do
       page.dirty?.should be_true
     end
   end
-  
+
   describe '#published?' do
     it "should be true when the status is Status[:published]" do
       page.status = Status[:published]
@@ -249,7 +276,7 @@ describe Page do
       page.published?.should be_false
     end
   end
-  
+
   describe '#scheduled?' do
     it "should be true when the status is Status[:scheduled]" do
       page.status = Status[:scheduled]
@@ -262,68 +289,100 @@ describe Page do
   end
 
   context 'when setting the published_at date' do
+    let(:future){ Time.current + 20.years }
+    let(:past){ Time.current - 1.year }
+    let(:future_scheduled){
+      FactoryGirl.build(:page, :status_id => Status[:published].id, :published_at => future)
+    }
+    let(:past_scheduled){
+      FactoryGirl.build(:page, :status_id => Status[:scheduled].id, :published_at => past)
+    }
+
     it 'should change its status to scheduled with a date in the future' do
-      new_page = Page.new(page_params(:status_id => '100', :published_at => '2020-1-1'))
-      new_page.save
-      new_page.status_id.should == 90 
+      future_scheduled.save
+
+      expect(future_scheduled.status_id).to eq(Status[:scheduled].id)
     end
+
     it 'should set the status to published when the date is in the past' do
-      scheduled_time = Time.zone.now - 1.year
-      p = Page.new(page_params(:status_id => '90', :published_at => scheduled_time))
-      p.save
-      p.status_id.should == 100
+      past_scheduled.save
+
+      expect(past_scheduled.status_id).to eq(Status[:published].id)
+    end
+
+    it 'should interpret the input date correctly when the current language is not English' do
+      I18n.locale = :nl
+      page.update_attribute(:published_at, "17 mei 2011")
+      I18n.locale = :en
+      expect(page.published_at.to_s(:db)).to eq('2013-05-17 00:00:00')
     end
   end
-  
-  context 'when setting the status' do  
+
+  context 'when setting the status' do
+    let(:page){ FactoryGirl.build(:page, :status_id => Status[:published].id, :published_at => nil) }
+    let(:scheduled){ FactoryGirl.build(:page, :status_id => Status[:scheduled].id, :published_at => (Time.current + 1.day)) }
+
     it 'should set published_at when given the published status id' do
-      page = Page.new(page_params(:status_id => '100', :published_at => nil))
-      page.status_id = Status[:published].id
       page.save
-      page.published_at.utc.day.should == Time.now.utc.day
+
+      expect(page.published_at.utc.day).to eq(Time.now.utc.day)
     end
+
     it 'should change its status to draft when set to draft' do
-      scheduled = pages(:scheduled)
-      scheduled.status_id = '1'
+      scheduled.status_id = Status[:draft].id
       scheduled.save
-      scheduled.status_id.should == 1
+
+      expect(scheduled.status_id).to eq(Status[:draft].id)
     end
+
     it 'should not update published_at when already published' do
-      new_page = Page.new(page_params(:status_id => Status[:published].id))
-      expected = new_page.published_at
-      new_page.save
-      new_page.published_at.should == expected
+      page.save
+
+      page.save
+      expect(page.published_at_changed?).to be_false
     end
   end
-    
+
   describe '#path' do
+
+    let(:home){ FactoryGirl.create(:page, :slug => '/', :published_at => Time.now) }
+    let(:parent){ FactoryGirl.create(:page, :parent => home, :slug => 'parent', :published_at => Time.now) }
+    let(:child){ FactoryGirl.create(:page, :parent => parent, :slug => 'child', :published_at => Time.now) }
+    let(:grandchild){ FactoryGirl.create(:page, :parent => child, :slug => 'grandchild', :published_at => Time.now) }
+
     it "should start with a slash" do
-      page.path.should match(/^\//)
+      expect(home.path).to match(/\A\//)
     end
     it "should return a string with the current page's slug catenated with it's ancestor's slugs and delimited by slashes" do
-      pages(:grandchild).path.should == '/parent/child/grandchild/'
+      expect(grandchild.path).to eq('/parent/child/grandchild/')
     end
     it 'should end with a slash' do
-      page.path.should match(/\/$/)
+      expect(page.path).to match(/\/\z/)
     end
   end
-  
+
   describe '#child_path' do
+
+    let(:home){ FactoryGirl.create(:page, :slug => '/', :published_at => Time.now) }
+    let(:parent){ FactoryGirl.create(:page, :parent => home, :slug => 'parent', :published_at => Time.now) }
+    let(:child){ FactoryGirl.create(:page, :parent => parent, :slug => 'child', :published_at => Time.now) }
+
     it 'should return the #path for the given child' do
       parent.child_path(child).should == '/parent/child/'
     end
   end
-  
-  describe '#status' do
-    it 'should return the Status with the id of the page status_id' do
-      home.status.should == Status.find(home.status_id)
-    end
-  end
 
-  describe '#status=' do
+  describe '#status' do
+    test_helper :page
+    let(:home){ FactoryGirl.create(:page, :slug => '/', :published_at => Time.current) }
+
+    it 'should return the Status with the id of the page status_id' do
+      expect(home.status).to eq(Status.find(home.status_id))
+    end
+
     it 'should set the status_id to the id of the given Status' do
       home.status = Status[:draft]
-      home.status_id.should == Status[:draft].id
+      expect(home.status_id).to eq(Status[:draft].id)
     end
   end
 
@@ -331,32 +390,45 @@ describe Page do
   its(:virtual?){ should be_false }
 
   it 'should support optimistic locking' do
-    p1, p2 = Page.find(page_id(:first)), Page.find(page_id(:first))
+    p1, p2 = Page.find(page.id), Page.find(page.id)
     p1.update_attributes!(:breadcrumb => "foo")
     lambda { p2.update_attributes!(:breadcrumb => "blah") }.should raise_error(ActiveRecord::StaleObjectError)
   end
 
-  it "should list descendants" do
-    children = page.allowed_children
-    children.should include(FileNotFoundPage)
+  describe '.default_child' do
+    it 'should return the Page class' do
+      Page.default_child.should == Page
+    end
   end
 
-  it "should reject pages that aren't in the menu" do
-    FileNotFoundPage.in_menu false
-    page.allowed_children.should_not include(FileNotFoundPage)
+  describe '#default_child' do
+    it 'should return the class default_child' do
+      page.default_child.should == Page.default_child
+    end
+  end
+
+  describe '#allowed_children_lookup' do
+    it 'should return the default_child as the first element' do
+      page.allowed_children_lookup.first.should == page.default_child
+    end
+
+    it 'should return a collection containing the default_child and ordered by name Page descendants that are in_menu' do
+      Page.should_receive(:descendants).and_return([PageSpecTestPage, CustomFileNotFoundPage])
+      page.allowed_children_lookup.should == [Page, CustomFileNotFoundPage, PageSpecTestPage]
+    end
   end
 end
 
 describe Page, "before save filter" do
-  dataset :home_page
+  #dataset :home_page
 
   before :each do
-    Page.create(page_params(:title =>"Month Index", :class_name => "ArchiveMonthIndexPage"))
+    Page.create(page_params(:title =>"Month Index", :class_name => "VirtualSpecPage"))
     @page = Page.find_by_title("Month Index")
   end
 
   it 'should set the class name correctly' do
-    @page.should be_kind_of(ArchiveMonthIndexPage)
+    @page.should be_kind_of(VirtualSpecPage)
   end
 
   it 'should set the virtual bit correctly' do
@@ -366,14 +438,14 @@ describe Page, "before save filter" do
 
   it 'should update virtual based on new class name' do
     # turn a regular page into a virtual page
-    @page.class_name = "ArchiveMonthIndexPage"
+    @page.class_name = "VirtualSpecPage"
     @page.save.should == true
     @page.virtual?.should == true
     @page.send(:read_attribute, :virtual).should == true
 
    # turn a virtual page into a non-virtual one
    ["", nil, "Page", "PageSpecTestPage"].each do |value|
-      @page = ArchiveYearIndexPage.create(page_params)
+      @page = PageSpecTestPage.create(page_params)
       @page.class_name = value
       @page.save.should == true
       @page = Page.find @page.id
@@ -385,7 +457,7 @@ describe Page, "before save filter" do
 end
 
 describe Page, "rendering" do
-  dataset :pages, :markup_pages, :snippets, :layouts
+  #dataset :pages, :markup_pages, :layouts
   test_helper :render
 
   before :each do
@@ -397,7 +469,7 @@ describe Page, "rendering" do
   end
 
   it 'should render with a filter' do
-    pages(:textile).render.should == '<p>Some <strong>Textile</strong> content.</p>'
+    pages(:textile).render.should == 'Some *Textile* content. - Filtered with TEXTILE!'
   end
 
   it 'should render with tags' do
@@ -417,70 +489,90 @@ describe Page, "rendering" do
     @page.render_part(:empty).should == ''
   end
 
-  it 'should render a snippet' do
-    @page.render_snippet(snippets(:first)).should == 'test'
-  end
-
-  it 'should render a snippet with a filter' do
-    @page.render_snippet(snippets(:markdown)).should match(%r{<p><strong>markdown</strong></p>})
-  end
-
-  it 'should render a snippet with a tag' do
-    @page.render_snippet(snippets(:radius)).should == 'Home'
-  end
-
   it 'should render custom pages with tags' do
     create_page "Test Page", :body => "<r:test1 /> <r:test2 />", :class_name => "PageSpecTestPage"
     pages(:test_page).should render_as('Hello world! Another test. body.')
   end
+
+  it 'should render custom pages with tags that return frozen strings' do
+    create_page "Test Page", :body => "<r:frozen_string />", :class_name => "PageSpecTestPage"
+    pages(:test_page).should render_as('Brain body.')
+  end
+
+  it 'should render blank when containing no content' do
+    Page.new.should render_as('')
+  end
+end
+
+unless defined?(::CustomFileNotFoundPage)
+  class ::CustomFileNotFoundPage < FileNotFoundPage
+  end
 end
 
 describe Page, "#find_by_path" do
-  dataset :pages, :file_not_found
-
-  before :each do
-    @page = pages(:home)
-  end
+  let(:home){ FactoryGirl.create(:page, :slug => '/', :published_at => Time.now, :status_id => Status[:published].id) }
+  let(:parent){ FactoryGirl.create(:page, :parent => home, :slug => 'parent', :published_at => Time.now, :status_id => Status[:published].id)}
+  let(:child){ FactoryGirl.create(:page, :parent => parent, :slug => 'child', :published_at => Time.now, :status_id => Status[:published].id)}
+  let(:grandchild){ FactoryGirl.create(:page, :parent => child, :slug => 'grandchild', :published_at => Time.now, :status_id => Status[:published].id)}
+  let(:great_grandchild){ FactoryGirl.create(:page, :parent => grandchild, :slug => 'great-grandchild', :published_at => Time.now, :status_id => Status[:published].id)}
+  let(:virtual){ FactoryGirl.create(:page, :parent_id => home.id, :slug => 'virtual', :virtual => true) }
+  let(:file_not_found){ FactoryGirl.create(:file_not_found_page, parent_id: home.id, :slug => '404', :published_at => Time.now, :status_id => Status[:published].id)}
+  let(:drafts){ FactoryGirl.create(:page, :parent => home, :slug => 'drafts', :status_id => Status[:draft].id) }
+  let(:lonely_draft_file_not_found){ FactoryGirl.create(:file_not_found_page, :parent_id => drafts.id, :status_id => Status[:draft].id) }
+  let(:gallery){ FactoryGirl.create(:page, :parent => home, :slug => 'gallery', :status_id => Status[:published].id)}
+  let(:draft){ FactoryGirl.create(:page, :parent => home, :slug => 'draft', :status_id => Status[:published].id) }
+  let(:no_picture){ FactoryGirl.create(:file_not_found_page, :slug => 'no-picture', :parent_id => gallery.id, :class_name => 'CustomFileNotFoundPage', :status_id => Status[:published].id)}
 
   it 'should allow you to find the home page' do
-    @page.find_by_path('/').should == @page
+    expect(home.find_by_path('/')).to eq(home)
   end
 
   it 'should allow you to find deeply nested pages' do
-    @page.find_by_path('/parent/child/grandchild/great-grandchild/').should == pages(:great_grandchild)
+    # ensure great_grandchild exists:
+    great_grandchild
+    expect(home.find_by_path('/parent/child/grandchild/great-grandchild/')).to eq(great_grandchild)
   end
 
   it 'should not allow you to find virtual pages' do
-    @page.find_by_path('/virtual/').should == pages(:file_not_found)
+    virtual
+    file_not_found
+    expect(home.find_by_path('/virtual/')).to eq(file_not_found)
   end
 
   it 'should find the FileNotFoundPage when a page does not exist' do
-    @page.find_by_path('/nothing-doing/').should == pages(:file_not_found)
+    file_not_found
+    expect(home.find_by_path('/nothing-doing/')).to eq(file_not_found)
   end
 
   it 'should find a draft FileNotFoundPage in dev mode' do
-    @page.find_by_path('/drafts/no-page-here', false).should == pages(:lonely_draft_file_not_found)
+    lonely_draft_file_not_found
+    expect(home.find_by_path('/drafts/no-page-here', false)).to eq(lonely_draft_file_not_found)
   end
 
   it 'should not find a draft FileNotFoundPage in live mode' do
-    @page.find_by_path('/drafts/no-page-here').should_not == pages(:lonely_draft_file_not_found)
+    lonely_draft_file_not_found
+    expect(home.find_by_path('/drafts/no-page-here', true)).to_not eq(lonely_draft_file_not_found)
   end
 
   it 'should find a custom file not found page' do
-    @page.find_by_path('/gallery/nothing-doing').should == pages(:no_picture)
+    no_picture
+    expect(home.find_by_path('/gallery/nothing-doing')).to eq(no_picture.becomes(CustomFileNotFoundPage))
   end
 
   it 'should not find draft pages in live mode' do
-    @page.find_by_path('/draft/').should == pages(:file_not_found)
+    file_not_found
+    home.find_by_path('/draft/').should == file_not_found
   end
 
   it 'should find draft pages in dev mode' do
-    @page.find_by_path('/draft/', false).should == pages(:draft)
+    draft
+    expect(home.find_by_path('/draft/', false)).to eq(draft)
   end
 
   it "should use the top-most published 404 page by default" do
-    @page.find_by_path('/foo').should == pages(:file_not_found)
-    @page.find_by_path('/foo/bar').should == pages(:file_not_found)
+    file_not_found
+    home.find_by_path('/foo').should == file_not_found
+    home.find_by_path('/foo/bar').should == file_not_found
   end
 end
 
@@ -559,18 +651,15 @@ describe Page, "class" do
   end
 
   describe ".date_column_names" do
-    it "should return an array of column names whose sql_type is a date or datetime" do
-      Page.date_column_names.should == Page.columns.collect{|c| c.name if c.sql_type =~ /date/ }.compact
+    it "should return an array of column names whose sql_type is a date, datetime or timestamp" do
+      Page.date_column_names.should == Page.columns.collect{|c| c.name if c.sql_type =~ /^date(time)?|timestamp/ }.compact
     end
   end
 end
 
 describe Page, "loading subclasses before bootstrap" do
-  before :each do
-    Page.connection.should_receive(:tables).and_return([])
-  end
-
   it "should not attempt to search for missing subclasses" do
+    Page.connection.stub(:tables).and_return([])
     Page.connection.should_not_receive(:select_values).with("SELECT DISTINCT class_name FROM pages WHERE class_name <> '' AND class_name IS NOT NULL")
     Page.load_subclasses
   end
@@ -590,16 +679,16 @@ end
 
 describe Page, 'loading subclasses after bootstrap' do
   it "should find subclasses in extensions" do
-    defined?(ArchivePage).should_not be_nil
+    defined?(BasicExtensionPage).should_not be_nil
   end
 
   it "should not adjust the display name of subclasses found in extensions" do
-    ArchivePage.display_name.should_not match(/not installed/)
+    BasicExtensionPage.display_name.should_not match(/not installed/)
   end
 end
 
 describe Page, "class which is applied to a page but not defined" do
-  dataset :pages
+  #dataset :pages
 
   before :each do
     Object.send(:const_set, :ClassNotDefinedPage, Class.new(Page){ def self.missing?; false end })
@@ -619,42 +708,51 @@ describe Page, "class which is applied to a page but not defined" do
   it "should adjust the display name to indicate that the page type is not installed" do
     ClassNotDefinedPage.display_name.should match(/not installed/)
   end
-  
+
   after :each do
     Object.send(:remove_const, :ClassNotDefinedPage)
   end
 end
 
 describe Page, "class find_by_path" do
-  dataset :pages, :file_not_found
+  test_helper :page
+
+  let(:home){ Page.create!(page_params(:slug => '/', :published_at => Time.now)) }
+  let(:parent){ home.children.create!(page_params(:slug => 'parent', :published_at => Time.now))}
+  let(:child){ parent.children.create!(page_params(:slug => 'child', :published_at => Time.now))}
+  let(:draft){ home.children.create!(page_params(:slug => 'draft', :status_id => Status[:draft].id)) }
+  let(:file_not_found){ FileNotFoundPage.create!(page_params(parent_id: home.id, :slug => '404', :published_at => Time.now))}
 
   it 'should find the home page' do
-    Page.find_by_path('/').should == pages(:home)
+    home
+    expect(Page.find_by_path('/')).to eq(home)
   end
 
   it 'should find children' do
-    Page.find_by_path('/parent/child/').should == pages(:child)
+    child
+    expect(Page.find_by_path('/parent/child/')).to eq(child)
   end
 
   it 'should not find draft pages in live mode' do
-    Page.find_by_path('/draft/').should == pages(:file_not_found)
-    Page.find_by_path('/draft/', false).should == pages(:draft)
+    file_not_found
+    draft
+    expect(Page.find_by_path('/draft/')).to eq(file_not_found)
+    expect(Page.find_by_path('/draft/', false)).to eq(draft)
   end
 
   it 'should raise an exception when root page is missing' do
-    pages(:home).destroy
-    Page.find_by_parent_id().should be_nil
-    lambda { Page.find_by_path "/" }.should raise_error(Page::MissingRootPageError, 'Database missing root page')
+    expect{Page.find_by_path("/")}.to raise_error(Page::MissingRootPageError, 'Database missing root page')
   end
 end
 
 describe Page, "processing" do
-  dataset :pages_with_layouts
 
   before :all do
     @request = ActionController::TestRequest.new :url => '/page/'
     @response = ActionController::TestResponse.new
-    @page = pages(:home)
+    @page = FactoryGirl.build(:page) do |page|
+      page.parts.build(:name => 'body', :content => 'Hello world!')
+    end
   end
 
   it 'should set response body' do
@@ -672,7 +770,8 @@ describe Page, "processing" do
   end
 
   it 'should set content type based on layout' do
-    @page = pages(:utf8)
+    @page = FactoryGirl.build(:page)
+    @page.layout = FactoryGirl.build(:utf8_layout)
     @page.process(@request, @response)
     @response.should be_success
     @response.headers['Content-Type'].should == 'text/html;charset=utf8'

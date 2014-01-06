@@ -1,11 +1,17 @@
+require 'acts_as_tree'
+require 'annotatable'
+require 'radiant/extension'
+
 class Page < ActiveRecord::Base
 
   class MissingRootPageError < StandardError
     def initialize(message = 'Database missing root page'); super end
   end
 
+  attr_accessible :lock_version, :parent_id, :class_name, :title, :slug, :breadcrumb, :layout_id, :status_id, :published_at, :parts_attributes
+
   # Callbacks
-  before_save :update_virtual, :update_status
+  before_save :update_virtual, :update_status, :set_allowed_children_cache
 
   # Associations
   acts_as_tree :order => 'virtual DESC, title ASC'
@@ -18,34 +24,30 @@ class Page < ActiveRecord::Base
   belongs_to :updated_by, :class_name => 'User'
 
   # Validations
-  validates_presence_of :title, :validator_name => :page_title_presence
-  validates_presence_of :slug, :validator_name => :page_slug_presence
-  validates_presence_of :breadcrumb, :validator_name => :page_breadcrumb_presence
-  validates_presence_of :status_id, :validator_name => :page_status_id_presence
+  validates :title, presence: true,
+                    length: { maximum: 255 }
+  validates :slug, presence: true,
+                  length: { maximum: 100 },
+                  format: %r{\A([-_.A-Za-z0-9]*|/)\z},
+                  uniqueness: { scope: :parent_id }
 
-  validates_length_of :title, :maximum => 255, :validator_name => :page_title_length
-  validates_length_of :slug, :maximum => 100, :validator_name => :page_slug_length
-  validates_length_of :breadcrumb, :maximum => 160, :validator_name => :page_breadcrumb_length
+  validates :breadcrumb, presence: true,
+                        length: { maximum: 160 }
 
-  validates_format_of :slug, :with => %r{^([-_.A-Za-z0-9]*|/)$}, :validator_name => :page_slug_format
-  validates_uniqueness_of :slug, :scope => :parent_id, :validator_name => :page_slug_uniqueness
-  validates_numericality_of :id, :status_id, :parent_id, :allow_nil => true, :only_integer => true, :validator_name => :page_id_numericality
+  validates :status_id, presence: true
 
   validate :valid_class_name
 
   include Radiant::Taggable
   include StandardTags
-  include DeprecatedTags
   include Annotatable
 
   annotate :description
   attr_accessor :request, :response, :pagination_parameters
-  class_inheritable_accessor :in_menu
-  self.in_menu = true
-  class_inheritable_accessor :default_child
+  class_attribute :default_child
   self.default_child = self
 
-  set_inheritance_column :class_name
+  self.inheritance_column = 'class_name'
 
   def layout_with_inheritance
     unless layout_without_inheritance
@@ -72,11 +74,6 @@ class Page < ActiveRecord::Base
     clean_path(path + '/' + child.slug)
   end
   alias_method :child_url, :child_path
-
-  def headers
-    # Return a blank hash that child classes can override or merge
-    { }
-  end
 
   def part(name)
     if new_record? or parts.to_a.any?(&:new_record?)
@@ -109,15 +106,15 @@ class Page < ActiveRecord::Base
   def published?
     status == Status[:published]
   end
-  
+
   def scheduled?
     status == Status[:scheduled]
   end
-  
+
   def status
    Status.find(self.status_id)
   end
-  
+
   def status=(value)
     self.status_id = value.id
   end
@@ -133,14 +130,31 @@ class Page < ActiveRecord::Base
 
   def process(request, response)
     @request, @response = request, response
-    if layout
-      content_type = layout.content_type.to_s.strip
-      @response.headers['Content-Type'] = content_type unless content_type.empty?
-    end
-    headers.each { |k,v| @response.headers[k] = v }
+    set_response_headers(@response)
     @response.body = render
     @response.status = response_code
   end
+
+  def headers
+    # Return a blank hash that child classes can override or merge
+    { }
+  end
+
+  def set_response_headers(response)
+    set_content_type(response)
+    headers.each { |k,v| response.headers[k] = v }
+  end
+  private :set_response_headers
+
+  def set_content_type(response)
+    if layout
+      content_type = layout.content_type.to_s.strip
+      if content_type.present?
+        response.headers['Content-Type'] = content_type
+      end
+    end
+  end
+  private :set_content_type
 
   def response_code
     200
@@ -171,38 +185,38 @@ class Page < ActiveRecord::Base
     return nil if virtual?
     path = clean_path(path) if clean
     my_path = self.path
-    if (my_path == path) && (not live or published?)
+    if (my_path == path) && (!live or published?)
       self
     elsif (path =~ /^#{Regexp.quote(my_path)}([^\/]*)/)
-      slug_child = children.find_by_slug($1)
+      slug_child = children.where(slug: $1).first
       if slug_child
-        found = slug_child.find_by_url(path, live, clean) # TODO: set to find_by_path after deprecation
+        found = slug_child.find_by_path(path, live, clean)
         return found if found
       end
       children.each do |child|
-        found = child.find_by_url(path, live, clean) # TODO: set to find_by_path after deprecation
+        found = child.find_by_path(path, live, clean)
         return found if found
       end
-      file_not_found_types = ([FileNotFoundPage] + FileNotFoundPage.descendants)
-      file_not_found_names = file_not_found_types.collect { |x| x.name }
-      condition = (['class_name = ?'] * file_not_found_names.length).join(' or ')
-      condition = "status_id = #{Status[:published].id} and (#{condition})" if live
-      children.find(:first, :conditions => [condition] + file_not_found_names)
+
+      if live
+        file_not_found_names = ([FileNotFoundPage] + FileNotFoundPage.descendants).map(&:name)
+        children.where(status_id: Status[:published].id).where(class_name: file_not_found_names).first
+      else
+        children.first
+      end
     end
   end
-  alias_method :find_by_url, :find_by_path
 
   def update_status
     self.published_at = Time.zone.now if published? && self.published_at == nil
-    
+
     if self.published_at != nil && (published? || scheduled?)
       self[:status_id] = Status[:scheduled].id if self.published_at  > Time.zone.now
       self[:status_id] = Status[:published].id if self.published_at <= Time.zone.now
     end
 
-    true    
+    true
   end
-
 
   def to_xml(options={}, &block)
     super(options.reverse_merge(:include => :parts), &block)
@@ -212,23 +226,23 @@ class Page < ActiveRecord::Base
     self.class.default_child
   end
 
-  def allowed_children
-    [default_child, *Page.descendants.sort_by(&:name)].select(&:in_menu?)
+  def allowed_children_lookup
+    [default_child, *Page.descendants.sort_by(&:name)].uniq
   end
 
+  def set_allowed_children_cache
+    self.allowed_children_cache = allowed_children_lookup.collect(&:name).join(',')
+  end
 
   class << self
-    alias_method :in_menu?, :in_menu
-    alias_method :in_menu, :in_menu=
+
+    def root
+      find_by_parent_id(nil)
+    end
 
     def find_by_path(path, live = true)
-      root = find_by_parent_id(nil)
       raise MissingRootPageError unless root
       root.find_by_path(path, live)
-    end
-    def find_by_url(*args)
-      ActiveSupport::Deprecation.warn("`find_by_url' has been deprecated; use `find_by_path' instead.", caller)
-      find_by_path(*args)
     end
 
     def date_column_names
@@ -249,13 +263,13 @@ class Page < ActiveRecord::Base
       @display_name = @display_name + " - not installed" if missing? && @display_name !~ /not installed/
       @display_name
     end
-    
+
     def display_name=(string)
       display_name(string)
     end
 
     def load_subclasses
-      ([RADIANT_ROOT] + Radiant::Extension.descendants.map(&:root)).each do |path|
+      ([Radiant.root] + Radiant::Extension.descendants.map(&:root)).each do |path|
         Dir["#{path}/app/models/*_page.rb"].each do |page|
           $1.camelize.constantize if page =~ %r{/([^/]+)\.rb}
         end
@@ -265,7 +279,7 @@ class Page < ActiveRecord::Base
           begin
             p.constantize
           rescue NameError, LoadError
-            eval(%Q{class #{p} < Page; def self.missing?; true end end}, TOPLEVEL_BINDING)
+            eval(%Q{class #{p} < Page; acts_as_tree; def self.missing?; true end end}, TOPLEVEL_BINDING)
           end
         end
       end
@@ -325,7 +339,6 @@ class Page < ActiveRecord::Base
     def attributes_protected_by_default
       super - [self.class.inheritance_column]
     end
-    
 
     def update_virtual
       unless self.class == Page.descendant_class(class_name)
@@ -337,7 +350,7 @@ class Page < ActiveRecord::Base
     end
 
     def clean_path(path)
-      "/#{ path.strip }/".gsub(%r{//+}, '/')
+      "/#{ path.to_s.strip }/".gsub(%r{//+}, '/')
     end
     alias_method :clean_url, :clean_path
 
@@ -358,7 +371,7 @@ class Page < ActiveRecord::Base
     end
 
     def parse_object(object)
-      text = object.content
+      text = object.content || ''
       text = parse(text)
       text = object.filter.filter(text) if object.respond_to? :filter_id
       text
